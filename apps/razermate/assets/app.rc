@@ -1,0 +1,33 @@
+// Windows 资源：应用图标 + 文件属性。
+// 由 build.rs 用 windres 编成 COFF 目标文件后链接进 exe，
+// 这样任务栏、Alt+Tab、资源管理器和文件属性里都显示雷蛇标志。
+
+// 语言必须写中立(0)：中文 Windows 上 FindResource/LoadImage 只会按系统语言
+// 找资源，纯 1033 的条目不回退，图标就加载不出来。
+LANGUAGE 0x00, 0x00
+
+1 ICON "app.ico"
+
+1 VERSIONINFO
+FILEVERSION 0,1,0,0
+PRODUCTVERSION 0,1,0,0
+FILEOS 0x40004
+FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "080404B0"
+    BEGIN
+      VALUE "FileDescription", "RazerMate - Basilisk V3 control panel"
+      VALUE "FileVersion", "0.1.0"
+      VALUE "InternalName", "razermate"
+      VALUE "OriginalFilename", "razermate.exe"
+      VALUE "ProductName", "RazerMate"
+      VALUE "ProductVersion", "0.1.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x804, 0x4B0
+  END
+END

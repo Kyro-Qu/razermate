@@ -1,0 +1,7 @@
+[package]
+name = "razer-ipc"
+version.workspace = true
+edition.workspace = true
+description = "Local IPC contract between razermate GUI and razermate-agent"
+
+[dependencies]

@@ -1,0 +1,281 @@
+{
+  "$schema": "profiles.schema.json",
+  "schema": 3,
+  "updated_at": "2026-11-24T23:30:00+08:00",
+
+  "_readme": [
+    "RazerMate v2 唯一事实源。后台程序是通用解释器：它不认识任何按键，也不内置『哪些键固定』的规则。",
+    "每个按键映射什么功能，完全由本文件决定；改本文件即可改行为，无需重新编译后台程序。",
+    "device.buttons 是名称→物理 ID 表（含每个键的原生动作串 native）。换鼠标只改这张表。",
+    "base.bindings 是基础层，写全所有按键；profiles[].overrides.bindings 只需写要改的键，其余继承 base。",
+    "任意组都可以覆盖任意按键，包括 left / right / wheelup / wheeldown。当前它们写 action=native 只是用户此刻的选择，不是程序限制。",
+    "action='native' 表示该键保持原生功能，程序会去 device.buttons[name].native 查具体动作串。",
+    "locked / equivalent / aliases / note 只是给人和 AI 看的说明字段，程序只读 action，不因 locked 拒绝任何配置。",
+    "程序忽略所有 _ 开头字段和不认识的字段，因此可以安全地增加新配置选项而不必重编译。",
+    "运行时位置：%LOCALAPPDATA%\\RazerMate\\profiles.json；本文件是仓库内的契约与默认模板。",
+    "只往 p0（direct profile / RAM 工作层）差量写，绝不读写、切换或擦除 5 个板载配置槽。"
+  ],
+
+  "device": {
+    "name": "Razer Basilisk V3",
+    "vid": 5976,
+    "pid": 153,
+    "_buttons_note": "id 是设备 get_buttons 报告的物理 ID，不是 USB HID button usage。forward=5 / back=4，用 90/91 会 FAIL。native 是『恢复该键出厂行为』时要写的动作串。",
+    "buttons": {
+      "left":       { "id": 1,   "zh": "左键",           "native": "mouse:left",         "tags": ["primary"] },
+      "right":      { "id": 2,   "zh": "右键",           "native": "mouse:right",        "tags": ["primary"] },
+      "middle":     { "id": 3,   "zh": "滚轮中键",       "native": "mouse:middle",       "tags": ["wheel"] },
+      "back":       { "id": 4,   "zh": "侧键·后退",      "native": "mouse:back",         "tags": ["side"] },
+      "forward":    { "id": 5,   "zh": "侧键·前进",      "native": "mouse:forward",      "tags": ["side"] },
+      "wheelup":    { "id": 9,   "zh": "滚轮上滚",       "native": "mouse:wheelup",      "tags": ["wheel"] },
+      "wheeldown":  { "id": 10,  "zh": "滚轮下滚",       "native": "mouse:wheeldown",    "tags": ["wheel"] },
+      "profile":    { "id": 14,  "zh": "底部 Profile 键","native": "profile:next",       "tags": ["body"] },
+      "clutch":     { "id": 15,  "zh": "狙击键",         "native": "mouse:left",         "tags": ["side"] },
+      "tiltleft":   { "id": 52,  "zh": "滚轮左倾",       "native": "mouseext:tiltleft",  "tags": ["tilt"] },
+      "tiltright":  { "id": 53,  "zh": "滚轮右倾",       "native": "mouseext:tiltright", "tags": ["tilt"] },
+      "dpi":        { "id": 96,  "zh": "DPI 扳机键",     "native": "dpi:cycle",          "tags": ["body"] },
+      "wheelmode":  { "id": 106, "zh": "滚轮模式切换",   "native": "wheelmode",          "tags": ["body"] }
+    },
+    "led_regions": { "wheel": 1, "logo": 4, "strip": 10 },
+    "caps": {
+      "dpi_range": [100, 26000],
+      "polling_hz": [125, 500, 1000],
+      "brightness_range": [0, 255],
+      "effects": ["static", "spectrum", "wave"],
+      "binding_layers": ["normal", "hypershift"],
+      "macro_trigger_modes": ["once", "hold", "toggle"],
+      "macro_step_range": [1, 65535],
+      "_note": "设备能力上限，供 AI 生成配置与校验时参考；程序不会替你猜越界值。"
+    }
+  },
+
+  "service": {
+    "autostart": true,
+    "background": true,
+    "headless": true,
+    "tray_icon": false,
+    "mode": "online",
+    "driver_only": true,
+    "never_touch_onboard_profiles": true,
+    "single_instance": true,
+    "match_by": ["foreground_exe", "window_title"],
+    "fallback": "global",
+    "on_error": "keep_last",
+    "on_device_missing": "retry",
+    "poll_ms": 800,
+    "config_watch_ms": 400,
+    "config_debounce_ms": 250,
+    "reapply_on_device_arrival": true,
+    "reapply_on_wake": true,
+    "reapply_interval_ms": 0,
+    "restore_on_exit": false,
+    "log": { "enabled": true, "path": "", "level": "info", "max_kb": 512 },
+    "p0": {
+      "write_all_buttons": true,
+      "skip_unchanged": true,
+      "normal_mode_only": true,
+      "_note": "write_all_buttons=true 表示每次按合并后的全量按键表下发，杜绝漏写残留；skip_unchanged 由设备层读回比对实现差量写。"
+    },
+    "macros": {
+      "allow_flash_write": false,
+      "auto_assign_ids": true,
+      "id_start": 1,
+      "id_end": 64,
+      "single_step_shortcut": true,
+      "_note": "allow_flash_write 默认 false：多步宏需要写设备宏区（Flash）。开启后程序才会分配/写入宏 ID 并回填。single_step_shortcut=true 时，只有一个组合键的宏直接展开成按键绑定，零 Flash 写入。"
+    }
+  },
+
+  "actions": {
+    "_note": "动作语法字典。程序按此把字符串编译成设备绑定；新增固件功能优先用 raw: 逃生舱，不必改代码。",
+    "native": "保持该按键的出厂功能，程序查 device.buttons[name].native",
+    "mouse:<名称>": "鼠标原生功能，fn=1。可用 left/right/middle/back/forward/wheelup/wheeldown",
+    "mouseext:<名称>": "扩展鼠标功能，fn=14。可用 tiltleft/tiltright（出厂左右倾=横向滚动）",
+    "key:<组合键>": "键盘组合键，如 key:ctrl+v / key:ctrl+shift+s / key:alt+f4 / key:ctrl+0x1d。修饰键 ctrl/lctrl/rctrl/shift/alt/win，主键支持字母数字、F1~F24、方向键、编辑键或 0x 十六进制 HID usage",
+    "macro:<名称>": "播放 macros 里定义的宏；也兼容 macro:<id>x<次数>，如 macro:0x0101x3",
+    "macrohold:<名称>": "按住期间持续播放",
+    "macrotoggle:<名称>": "按一次开始、再按一次停止",
+    "media:<键|0x码>": "volup/voldown/mute/playpause/next/prev/stop，或直接 16 进制 consumer code",
+    "dpi:up | dpi:down | dpi:cycle": "DPI 档位增减／循环",
+    "off": "禁用该按键",
+    "wheelmode": "切换滚轮阻尼模式",
+    "profile:next": "切换板载配置槽；v2 默认不使用，base 里 profile 键写 off",
+    "double | hypershift": "双击 / Hypershift 层",
+    "raw:<fn>,<size>,<d0..d4>": "逃生舱：直接给设备写 fn/长度/5 字节数据，例如 raw:2,2,1,25。固件将来支持的新功能也能配，无需重编译"
+  },
+  "lighting_effects": {
+    "static": "固定单色，必须给 rgb（6 位十六进制，不带 #）",
+    "spectrum": "光谱循环，不需要 rgb",
+    "wave": "波浪，可给 mode(0..255) 与 speed(0..255)",
+    "off": "设备无 off 效果，用 brightness: 0 代替",
+    "_note": "每个区都要写 effect + brightness；漏写的区继承 base。"
+  },
+  "macro_steps": {
+    "ctrl+s": "组合键，一次按下再松开",
+    "text:hello": "逐字输入 ASCII 文本",
+    "wait:200": "等待 200ms（1..65535）",
+    "click:left": "鼠标点击，left/right/middle",
+    "wheel:-1": "滚轮一格，负数向下",
+    "media:play": "多媒体键",
+    "_note": "多步宏需要设备宏区（Flash）；见 service.macros.allow_flash_write。"
+  },
+
+  "macros": {
+    "close_tab": {
+      "steps": ["ctrl+w"],
+      "id": null,
+      "trigger": "once",
+      "equivalent": "关闭当前标签页",
+      "note": "单步组合键，零 Flash 写入即可用",
+      "aliases": ["关页", "close tab"]
+    },
+    "save": {
+      "steps": ["ctrl+s"],
+      "id": null,
+      "trigger": "once",
+      "equivalent": "保存当前文件"
+    },
+    "save_as": {
+      "steps": ["ctrl+shift+s"],
+      "id": null,
+      "trigger": "once",
+      "equivalent": "另存为",
+      "note": "若需要『按键后等对话框弹出』，可加 wait:200，但那会变成多步宏，需要开启 allow_flash_write"
+    }
+  },
+
+  "base": {
+    "_note": "基础层。13 个按键全部写全，任何 profile 没覆盖的键都继承这里。当前用户选择：4 个键保持原生、左右倾做复制粘贴。想改右键，在这里或在任意 profile 的 overrides 里改 action 即可。",
+    "bindings": {
+      "left":       { "action": "native",       "equivalent": "左键原生功能",       "note": "当前不参与宏和按键映射", "locked": true },
+      "right":      { "action": "native",       "equivalent": "右键原生功能",       "note": "当前不参与宏和按键映射；以后想改直接改 action", "locked": true },
+      "wheelup":    { "action": "native",       "equivalent": "滚轮上滚原生功能",   "note": "当前不参与宏和按键映射", "locked": true },
+      "wheeldown":  { "action": "native",       "equivalent": "滚轮下滚原生功能",   "note": "当前不参与宏和按键映射", "locked": true },
+      "tiltleft":   { "action": "key:ctrl+v",   "equivalent": "粘贴", "aliases": ["paste"], "locked": true },
+      "tiltright":  { "action": "key:ctrl+c",   "equivalent": "复制", "aliases": ["copy"],  "locked": true },
+      "middle":     { "action": "native",       "equivalent": "中键原生功能" },
+      "back":       { "action": "native",       "equivalent": "浏览器 / 资源管理器后退" },
+      "forward":    { "action": "native",       "equivalent": "浏览器 / 资源管理器前进" },
+      "profile":    { "action": "off",          "equivalent": "禁用，v2 不使用板载配置槽", "note": "切槽会覆盖 p0，破坏在线模式" },
+      "clutch":     { "action": "off",          "equivalent": "狙击键禁用，避免误触" },
+      "dpi":        { "action": "dpi:cycle",    "equivalent": "循环切换 DPI 档位" },
+      "wheelmode":  { "action": "wheelmode",    "equivalent": "切换滚轮阻尼模式" }
+    },
+    "sensor": { "dpi": 1600, "polling": 500 },
+    "lighting": {
+      "wheel": { "effect": "static", "rgb": "46d92d", "brightness": 180 },
+      "logo":  { "effect": "static", "rgb": "46d92d", "brightness": 180 },
+      "strip": { "effect": "spectrum",                 "brightness": 140 }
+    }
+  },
+
+  "profiles": [
+    {
+      "id": "global",
+      "name": "全局兜底",
+      "scope": "global",
+      "enabled": true,
+      "priority": 0,
+      "match": { "exe": [], "title_contains": [], "path_contains": [] },
+      "note": "没有任何应用配置命中时用这一组，例如桌面、资源管理器、未知程序。",
+      "overrides": {
+        "bindings": {
+          "middle":    { "action": "native",    "equivalent": "中键原生功能" },
+          "back":      { "action": "native",    "equivalent": "后退" },
+          "forward":   { "action": "native",    "equivalent": "前进" },
+          "profile":   { "action": "off",       "equivalent": "禁用，v2 不使用板载配置槽" },
+          "clutch":    { "action": "off",       "equivalent": "狙击键禁用" },
+          "dpi":       { "action": "dpi:cycle", "equivalent": "循环切换 DPI 档位" },
+          "wheelmode": { "action": "wheelmode", "equivalent": "切换滚轮阻尼模式" }
+        },
+        "sensor": { "dpi": 1600, "polling": 500 },
+        "lighting": {
+          "wheel": { "effect": "static", "rgb": "46d92d", "brightness": 180 },
+          "logo":  { "effect": "static", "rgb": "46d92d", "brightness": 180 },
+          "strip": { "effect": "spectrum",                 "brightness": 140 }
+        }
+      }
+    },
+
+    {
+      "id": "browser",
+      "name": "浏览器 / 编辑器",
+      "scope": "app",
+      "enabled": true,
+      "priority": 10,
+      "match": {
+        "exe": ["chrome.exe", "msedge.exe", "Code.exe", "firefox.exe"],
+        "title_contains": [],
+        "path_contains": []
+      },
+      "note": "示例：想给右键换个功能，只要在 overrides.bindings 里加一条 right 的 action 即可，无需重编译。",
+      "overrides": {
+        "bindings": {
+          "back":      { "action": "macro:close_tab", "equivalent": "关闭标签页", "aliases": ["关页", "close tab"] },
+          "forward":   { "action": "key:ctrl+t",      "equivalent": "新建标签页" },
+          "clutch":    { "action": "media:volup",     "equivalent": "音量 +" },
+          "wheelmode": { "action": "wheelmode",       "equivalent": "切换滚轮阻尼模式" }
+        },
+        "sensor": { "dpi": 2000, "polling": 1000 },
+        "lighting": {
+          "wheel": { "effect": "static", "rgb": "4c9dff", "brightness": 160 },
+          "logo":  { "effect": "static", "rgb": "4c9dff", "brightness": 160 },
+          "strip": { "effect": "static", "rgb": "4c9dff", "brightness": 120 }
+        }
+      }
+    },
+
+    {
+      "id": "kicad",
+      "name": "KiCad / EDA",
+      "scope": "app",
+      "enabled": true,
+      "priority": 20,
+      "match": {
+        "exe": ["kicad.exe", "pcbnew.exe", "eeschema.exe"],
+        "title_contains": ["KiCad", "PCB Editor"],
+        "path_contains": []
+      },
+      "overrides": {
+        "bindings": {
+          "back":      { "action": "macro:save",    "equivalent": "保存原理图 / PCB" },
+          "forward":   { "action": "macro:save_as", "equivalent": "另存为" },
+          "clutch":    { "action": "key:ctrl+z",    "equivalent": "撤销" },
+          "dpi":       { "action": "dpi:down",      "equivalent": "降一档 DPI，画板时更稳" },
+          "wheelmode": { "action": "off",           "equivalent": "禁用，画板时避免误切滚轮模式" }
+        },
+        "sensor": { "dpi": 1200, "polling": 500 },
+        "lighting": {
+          "wheel": { "effect": "static", "rgb": "ffab4a", "brightness": 150 },
+          "logo":  { "effect": "static", "rgb": "ffab4a", "brightness": 150 },
+          "strip": { "effect": "static", "rgb": "ffab4a", "brightness": 100 }
+        }
+      }
+    },
+
+    {
+      "id": "game",
+      "name": "游戏",
+      "scope": "app",
+      "enabled": true,
+      "priority": 30,
+      "match": {
+        "exe": ["cs2.exe", "LeagueClient.exe", "steam.exe"],
+        "title_contains": [],
+        "path_contains": []
+      },
+      "overrides": {
+        "bindings": {
+          "clutch":    { "action": "dpi:down", "equivalent": "降一档 DPI（狙击时更稳）" },
+          "wheelmode": { "action": "off",      "equivalent": "禁用，游戏中避免误切滚轮模式" }
+        },
+        "sensor": { "dpi": 800, "polling": 1000 },
+        "lighting": {
+          "wheel": { "effect": "wave", "mode": 1, "speed": 5, "brightness": 200 },
+          "logo":  { "effect": "wave", "mode": 1, "speed": 5, "brightness": 200 },
+          "strip": { "effect": "wave", "mode": 1, "speed": 5, "brightness": 200 }
+        }
+      }
+    }
+  ]
+}

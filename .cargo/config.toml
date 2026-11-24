@@ -1,0 +1,25 @@
+# crates.io from mainland China runs at ~0.2 MB/s here, which makes the first
+# Slint build look like a hang (25 min with zero artifacts in target/deps).
+# USTC's mirror measures ~4.5 MB/s on the same link, so pull from there.
+# Checksums are identical to upstream, so Cargo.lock stays valid.
+[source.crates-io]
+replace-with = "ustc"
+
+[source.ustc]
+registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
+
+[build]
+# 16C/32T; parallel link jobs stay bounded so we don't thrash RAM.
+jobs = 32
+
+[target.x86_64-pc-windows-gnu]
+# Link with the lld that ships with rustc, against rustup's own MinGW libraries.
+#
+# Why not the system gcc: this machine has MinGW-w64 gcc 8.1, whose
+# libkernel32.a declares WaitOnAddress / WakeByAddressSingle / WakeByAddressAll
+# as imports from KERNEL32.dll. Those live in KernelBase.dll on Windows 8+ and
+# are reached through an API set, so the loader kills the process with
+# STATUS_ENTRYPOINT_NOT_FOUND (0xC0000139) before main() runs.
+# rustup's own copy of libkernel32.a gets this right, so link against that.
+rustflags = ["-C", "target-feature=+crt-static"]
+linker = "C:\\Users\\Kyro\\.rustup\\toolchains\\stable-x86_64-pc-windows-gnu\\lib\\rustlib\\x86_64-pc-windows-gnu\\bin\\rust-lld.exe"

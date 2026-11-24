@@ -1,0 +1,26 @@
+[package]
+name = "razermate-headless"
+version.workspace = true
+edition.workspace = true
+description = "RazerMate v2 headless agent: pure JSON-driven p0 writer, no GUI, no tray"
+
+[[bin]]
+name = "razermate-headless"
+path = "src/main.rs"
+
+[dependencies]
+razer-config.workspace = true
+razer-core.workspace = true
+razer-ipc.workspace = true
+razer-protocol.workspace = true
+
+[dependencies.windows-sys]
+version = "0.59"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Threading",
+    "Win32_System_Registry",
+    "Win32_System_Console",
+    "Win32_System_SystemInformation",
+    "Win32_UI_WindowsAndMessaging",
+]

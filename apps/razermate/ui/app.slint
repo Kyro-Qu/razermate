@@ -1,0 +1,3342 @@
+// RazerMate — Basilisk V3 有线版控制面板
+//
+// 设计约束（来自 PLAN.md）：
+//   * 界面文案全部中文；
+//   * 界面显示的每一个数值都必须来自设备实测读取，不允许写死；
+//   * 模式一追求极低内存，因此不使用图片资源、不使用特效渲染。
+//
+// 字体固定为微软雅黑 UI，保证中文在 software renderer 下也能正确出字形。
+
+import { ScrollView } from "std-widgets.slint";
+
+// ───────────────────────────── 主题 ─────────────────────────────
+
+export global Theme {
+    // 底色压到接近纯黑（带一点蓝），卡片才浮得起来；层次靠「底 < 卡 < 卡内浮层」三级拉开。
+    out property <color> bg: #080a0e;
+    out property <color> bg-soft: #0c0f14;
+    out property <color> sidebar: #0a0c11;
+    out property <color> card: #151a21;
+    out property <color> card-hi: #1d232c;
+    out property <color> inset: #10141a;
+    out property <color> border: #ffffff12;
+    out property <color> border-2: #ffffff22;
+    out property <color> text: #f5f7fb;
+    out property <color> dim: #a3adbb;
+    out property <color> faint: #838f9e;   // 10.5px 小字也要过 AA，别用太暗的灰
+    // 雷蛇绿是唯一强调色，只用于「当前 / 成功 / 主操作」。
+    out property <color> accent: #46d92d;
+    out property <color> accent-hi: #7bf25c;
+    out property <color> accent-ink: #06120a;
+    out property <color> accent-dim: #2f9c22;
+    out property <color> accent-soft: #46d92d22;
+    // 四条指标卡各自的色相，只做识别，不做装饰滥用。
+    out property <color> violet: #a78bfa;
+    out property <color> blue: #4c9dff;
+    out property <color> amber: #ffab4a;
+    out property <color> warn: #ffb020;
+    out property <color> danger: #ff5a52;
+    out property <color> hover: #ffffff0d;
+
+    // 底盘灯带的五色，用来做顶栏/底栏 2px 细条：呼应实物，纯色块、零贴图。
+    out property <color> rgb-1: #ff453a;
+    out property <color> rgb-2: #ffd60a;
+    out property <color> rgb-3: #30d158;
+    out property <color> rgb-4: #0a84ff;
+    out property <color> rgb-5: #bf5af2;
+}
+
+// ───────────────────────────── 数据结构 ─────────────────────────────
+
+export struct ButtonRow {
+    id: int,
+    name: string,
+    action: string,
+    supported: bool,
+    kind: int,
+    arg: string,
+}
+
+export struct SlotRow {
+    index: int,
+    name: string,
+    summary: string,
+    active: bool,
+    colour: color,
+}
+
+export struct MacroRow {
+    id: int,
+    id-hex: string,
+    size: string,
+    summary: string,
+}
+
+export struct LightRow {
+    region: string,
+    region-id: int,
+    effect: string,
+    brightness: string,
+    colour: color,
+}
+
+export struct StageRow {
+    index: int,
+    dpi: string,
+    active: bool,
+}
+
+// 一条「前台程序 → 板载槽」规则。
+export struct RuleRow {
+    exe: string,
+    slot: int,
+    slot-name: string,
+}
+
+// 在线模式的一个虚拟槽（列表行）。
+export struct VsRow {
+    id: string,
+    name: string,
+    exes: string,
+    current: bool,
+}
+
+// 宏编辑区里的一步。
+export struct StepRow {
+    index: int,
+    kind: int,
+    kind-label: string,
+    text: string,
+    /// 编码成字节后占多少字节，帮助用户理解 Flash 消耗。
+    bytes: int,
+}
+
+// ───────────────────────────── 基础组件 ─────────────────────────────
+
+// 导航图标：纯几何绘制，不引入图片资源，符合「极低内存」约束。
+component NavIcon inherits Rectangle {
+    in property <int> kind: 0;
+    in property <bool> active: false;
+    in-out property <color> ink: root.active ? Theme.accent : Theme.dim;
+
+    width: 16px;
+    height: 16px;
+    background: transparent;
+
+    if root.kind == 0 : Rectangle { // 概览
+        x: 2px; y: 2px; width: 12px; height: 12px; border-radius: 3px;
+        border-width: 1.5px; border-color: root.ink;
+        Rectangle { x: 4px; y: 4px; width: 4px; height: 4px; border-radius: 2px; background: root.ink; }
+    }
+    if root.kind == 1 : Rectangle { // 按键映射
+        x: 1px; y: 6px; width: 14px; height: 4px;
+        Rectangle { x: 0; y: 0; width: 3px; height: 4px; border-radius: 1px; background: root.ink; }
+        Rectangle { x: 5.5px; y: 0; width: 3px; height: 4px; border-radius: 1px; background: root.ink; }
+        Rectangle { x: 11px; y: 0; width: 3px; height: 4px; border-radius: 1px; background: root.ink; }
+    }
+    if root.kind == 2 : Rectangle { // 灯光
+        x: 2px; y: 2px; width: 12px; height: 12px; border-radius: 6px;
+        border-width: 1.5px; border-color: root.ink;
+        Rectangle { x: 5px; y: 5px; width: 4px; height: 4px; border-radius: 2px; background: root.ink; }
+    }
+    if root.kind == 3 : Rectangle { // 性能
+        x: 2px; y: 0; width: 12px; height: 16px;
+        Rectangle { x: 0; y: 9px; width: 3px; height: 6px; border-radius: 1.5px; background: root.ink; }
+        Rectangle { x: 4.5px; y: 5px; width: 3px; height: 10px; border-radius: 1.5px; background: root.ink; }
+        Rectangle { x: 9px; y: 1px; width: 3px; height: 14px; border-radius: 1.5px; background: root.ink; }
+    }
+    if root.kind == 4 : Rectangle { // 宏
+        x: 3px; y: 1px; width: 10px; height: 14px; border-radius: 2px;
+        border-width: 1.5px; border-color: root.ink;
+        Rectangle { x: 2px; y: 3px; width: 6px; height: 1.5px; border-radius: 1px; background: root.ink; }
+        Rectangle { x: 2px; y: 6px; width: 6px; height: 1.5px; border-radius: 1px; background: root.ink; }
+        Rectangle { x: 2px; y: 9px; width: 4px; height: 1.5px; border-radius: 1px; background: root.ink; }
+    }
+    if root.kind == 5 : Rectangle { // 配置槽位
+        x: 1px; y: 1px; width: 14px; height: 14px;
+        Rectangle { x: 0; y: 0; width: 10px; height: 7px; border-radius: 2px; border-width: 1.5px; border-color: root.ink; }
+        Rectangle { x: 4px; y: 7px; width: 10px; height: 7px; border-radius: 2px; background: Theme.card; border-width: 1.5px; border-color: root.ink; }
+    }
+    if root.kind == 6 : Rectangle { // 自动切换
+        x: 0; y: 5px; width: 16px; height: 6px;
+        Rectangle { x: 0; y: 1px; width: 4px; height: 4px; border-radius: 2px; background: root.ink; }
+        Rectangle { x: 6px; y: 2px; width: 4px; height: 2px; background: root.ink; }
+        Rectangle { x: 12px; y: 1px; width: 4px; height: 4px; border-radius: 2px; background: root.ink; }
+    }
+    if root.kind == 7 : Rectangle { // 设置
+        x: 2px; y: 2px; width: 12px; height: 12px; border-radius: 6px;
+        border-width: 1.5px; border-color: root.ink;
+        Rectangle { x: 5px; y: 5px; width: 6px; height: 6px; border-radius: 1.5px; background: root.ink; }
+    }
+    if root.kind == 8 : Rectangle { // 重新读取
+        x: 1px; y: 3px; width: 14px; height: 11px;
+        Rectangle { x: 0; y: 0; width: 10px; height: 2px; border-radius: 1px; background: root.ink; }
+        Rectangle { x: 4px; y: 4px; width: 10px; height: 2px; border-radius: 1px; background: root.ink; }
+        Rectangle { x: 12px; y: 0; width: 2px; height: 5px; background: root.ink; }
+        Rectangle { x: 2px; y: 6px; width: 2px; height: 5px; background: root.ink; }
+    }
+}
+
+component NavItem inherits Rectangle {
+    in property <string> label;
+    in property <int> icon: 0;
+    in property <bool> active: false;
+    callback clicked();
+
+    height: 38px;
+    border-radius: 10px;
+    background: root.active ? @linear-gradient(100deg, #4ade2c 0%, #6ceb47 100%)
+                            : (ta.has-hover ? Theme.hover : transparent);
+    drop-shadow-blur: root.active ? 16px : 0px;
+    drop-shadow-color: #46d92d66;
+    drop-shadow-offset-y: 4px;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 10px;
+        spacing: 10px;
+        VerticalLayout { alignment: center; NavIcon { kind: root.icon; ink: root.active ? #07130a : #8c97a6; } }
+        Text {
+            text: root.label;
+            color: root.active ? #07130a : (ta.has-hover ? Theme.text : Theme.dim);
+            font-size: 13px;
+            font-weight: root.active ? 600 : 400;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component NavGroup inherits Rectangle {
+    in property <string> title;
+    height: 28px;
+    background: transparent;
+    VerticalLayout {
+        alignment: center;
+        Text {
+            text: root.title;
+            color: Theme.faint;
+            font-size: 11px;
+            letter-spacing: 1.4px;
+        }
+    }
+}
+
+component Card inherits Rectangle {
+    background: @linear-gradient(158deg, #1b222b 0%, #151a21 46%, #12161c 100%);
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: #ffffff14;
+    drop-shadow-blur: 22px;
+    drop-shadow-offset-y: 8px;
+    drop-shadow-color: #00000073;
+}
+
+// ── 线性图标：全部几何绘制，不引贴图；16×16 网格 ──
+component Glyph inherits Rectangle {
+    in property <int> kind: 0;
+    in property <color> ink: Theme.dim;
+
+    width: 16px;
+    height: 16px;
+    background: transparent;
+
+    if root.kind == 0 : Rectangle {   // 鼠标
+        x: 4px; y: 1px; width: 8px; height: 14px; border-radius: 4px;
+        border-width: 1.2px; border-color: root.ink;
+        Rectangle { x: 3px; y: 2.6px; width: 1.6px; height: 3.4px; border-radius: 0.8px; background: root.ink; }
+    }
+    if root.kind == 1 : Rectangle {   // 键盘
+        x: 1px; y: 3px; width: 14px; height: 10px; border-radius: 3px;
+        border-width: 1.2px; border-color: root.ink;
+        Rectangle { x: 3px; y: 3px; width: 3px; height: 1.4px; border-radius: 0.7px; background: root.ink; }
+        Rectangle { x: 7px; y: 3px; width: 3px; height: 1.4px; border-radius: 0.7px; background: root.ink; }
+        Rectangle { x: 4px; y: 5.6px; width: 5px; height: 1.4px; border-radius: 0.7px; background: root.ink; }
+    }
+    if root.kind == 2 : Rectangle {   // 宏 / 清单
+        x: 2px; y: 1px; width: 12px; height: 14px; border-radius: 3px;
+        border-width: 1.2px; border-color: root.ink;
+        Rectangle { x: 3px; y: 3.4px; width: 6px; height: 1.3px; border-radius: 0.6px; background: root.ink; }
+        Rectangle { x: 3px; y: 6.4px; width: 6px; height: 1.3px; border-radius: 0.6px; background: root.ink; }
+        Rectangle { x: 3px; y: 9.4px; width: 4px; height: 1.3px; border-radius: 0.6px; background: root.ink; }
+    }
+    if root.kind == 3 : Rectangle {   // 靶心 / DPI
+        x: 1px; y: 1px; width: 14px; height: 14px; border-radius: 7px;
+        border-width: 1.2px; border-color: root.ink;
+        Rectangle { x: 4px; y: 4px; width: 6px; height: 6px; border-radius: 3px; border-width: 1.2px; border-color: root.ink; }
+        Rectangle { x: 6.8px; y: 6.8px; width: 2.4px; height: 2.4px; border-radius: 1.2px; background: root.ink; }
+    }
+    if root.kind == 4 : Rectangle {   // 灯效 / 调色盘
+        x: 1px; y: 1px; width: 14px; height: 14px; border-radius: 7px;
+        border-width: 1.2px; border-color: root.ink;
+        Rectangle { x: 3.6px; y: 3.6px; width: 2.6px; height: 2.6px; border-radius: 1.3px; background: root.ink; }
+        Rectangle { x: 9px; y: 3.6px; width: 2.6px; height: 2.6px; border-radius: 1.3px; background: root.ink; }
+        Rectangle { x: 3.6px; y: 9px; width: 2.6px; height: 2.6px; border-radius: 1.3px; background: root.ink; }
+        Rectangle { x: 9px; y: 9px; width: 2.6px; height: 2.6px; border-radius: 1.3px; background: root.ink; }
+    }
+    if root.kind == 5 : Rectangle {   // 齿轮
+        x: 2px; y: 2px; width: 12px; height: 12px; border-radius: 6px;
+        border-width: 1.6px; border-color: root.ink;
+        Rectangle { x: 6px; y: 6px; width: 4px; height: 4px; border-radius: 2px; background: root.ink; }
+        Rectangle { x: 7px; y: -1px; width: 2px; height: 4px; background: root.ink; }
+        Rectangle { x: 7px; y: 13px; width: 2px; height: 4px; background: root.ink; }
+        Rectangle { x: -1px; y: 7px; width: 4px; height: 2px; background: root.ink; }
+        Rectangle { x: 13px; y: 7px; width: 4px; height: 2px; background: root.ink; }
+    }
+    if root.kind == 6 : Path {        // 波形 / 回报率
+        commands: "M 1 9 L 4.5 9 L 6.5 4 L 9 13 L 11 7 L 15 7";
+        stroke: root.ink; stroke-width: 1.6px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+    if root.kind == 7 : Path {        // 下载
+        commands: "M 8 2 L 8 10 M 4.6 6.8 L 8 10.2 L 11.4 6.8 M 2.6 13.2 L 13.4 13.2";
+        stroke: root.ink; stroke-width: 1.5px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+    if root.kind == 8 : Path {        // 上传
+        commands: "M 8 13.4 L 8 5.4 M 4.6 8.8 L 8 5.4 L 11.4 8.8 M 2.6 2.4 L 13.4 2.4";
+        stroke: root.ink; stroke-width: 1.5px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+    if root.kind == 9 : Path {        // 右箭头
+        commands: "M 6 3.5 L 10.5 8 L 6 12.5";
+        stroke: root.ink; stroke-width: 1.6px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+    if root.kind == 10 : Path {       // 下箭头
+        commands: "M 3.5 6 L 8 10.5 L 12.5 6";
+        stroke: root.ink; stroke-width: 1.6px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+    if root.kind == 11 : Path {       // 刷新
+        commands: "M 13 8 A 5 5 0 1 1 11.4 4.2 M 13.6 1.6 L 13.6 5 L 10.2 5";
+        stroke: root.ink; stroke-width: 1.5px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+    if root.kind == 12 : Path {       // 电源
+        commands: "M 5.2 3.4 A 5.4 5.4 0 1 0 10.8 3.4 M 8 1.4 L 8 7";
+        stroke: root.ink; stroke-width: 1.5px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+    if root.kind == 13 : Path {       // 文件夹
+        commands: "M 1.6 4.2 L 6.4 4.2 L 7.6 6 L 14.4 6 L 14.4 12.6 L 1.6 12.6 Z";
+        stroke: root.ink; stroke-width: 1.3px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+    if root.kind == 14 : Path {       // 对勾
+        commands: "M 3 8.4 L 6.4 11.8 L 13 4.6";
+        stroke: root.ink; stroke-width: 1.8px; fill: transparent;
+        viewbox-width: 16; viewbox-height: 16;
+        width: 16px; height: 16px;
+    }
+}
+
+// 卡片内标题：图标底 + 标题 + 右侧说明。比「卡片外面挂一条 SectionHeader」紧凑，
+// 也让一张卡自己说清是什么。
+component CardHead inherits Rectangle {
+    in property <string> title;
+    in property <string> sub: "";
+    in property <int> icon: 5;
+    in property <color> tone: Theme.accent;
+
+    height: 32px;
+    background: transparent;
+    clip: false;
+
+    HorizontalLayout {
+        spacing: 10px;
+
+        Rectangle {
+            width: 26px;
+            height: 26px;
+            border-radius: 8px;
+            background: root.tone.transparentize(0.85);
+            border-width: 1px;
+            border-color: root.tone.transparentize(0.7);
+            Glyph { kind: root.icon; ink: root.tone; x: 5px; y: 5px; }
+        }
+
+        Text {
+            text: root.title;
+            color: Theme.text;
+            font-size: 13.5px;
+            font-weight: 600;
+            vertical-alignment: center;
+        }
+
+        Text {
+            text: root.sub;
+            color: Theme.faint;
+            font-size: 11.5px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+}
+
+// 小节标题。用横向布局的 padding 而不是 x: —— 在 VerticalLayout 里 x 会被布局
+// 覆盖，Slint 会直接报警告。左侧细条与侧栏选中态呼应，强化分组层级。
+component SectionHeader inherits Rectangle {
+    in property <string> title;
+    in property <string> hint: "";
+    height: 20px;
+    background: transparent;
+
+    HorizontalLayout {
+        spacing: 8px;
+        VerticalLayout {
+            alignment: center;
+            Rectangle { width: 14px; height: 2px; border-radius: 1px; background: Theme.accent; }
+        }
+        Text {
+            text: root.title;
+            color: Theme.dim;
+            font-size: 10.5px;
+            font-weight: 700;
+            letter-spacing: 1.6px;
+            vertical-alignment: center;
+        }
+        Text {
+            text: root.hint;
+            color: Theme.faint;
+            font-size: 10.5px;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+}
+
+component StatTile inherits Rectangle {
+    in property <string> label;
+    in property <string> value;
+    in property <color> value-color: Theme.text;
+    in property <color> tone: Theme.border;
+    in property <int> icon: 0;
+
+    background: @linear-gradient(158deg, #1a212a 0%, #131922 100%);
+    border-radius: 14px;
+    border-width: 1px;
+    border-color: #ffffff14;
+    height: 92px;
+    clip: true;
+    drop-shadow-blur: 18px;
+    drop-shadow-offset-y: 6px;
+    drop-shadow-color: #00000059;
+
+    // 右上角的品牌色光晕：卡片色相靠它区分，且不压过数值。
+    Rectangle {
+        x: parent.width - 92px;
+        y: -60px;
+        width: 148px;
+        height: 148px;
+        border-radius: 74px;
+        background: @radial-gradient(circle, root.tone.transparentize(0.84) 0%, root.tone.transparentize(1.0) 62%);
+    }
+
+    VerticalLayout {
+        padding-left: 14px;
+        padding-right: 12px;
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 7px;
+        alignment: start;
+
+        HorizontalLayout {
+            spacing: 8px;
+
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                border-radius: 8px;
+                background: root.tone.transparentize(0.82);
+                border-width: 1px;
+                border-color: root.tone.transparentize(0.68);
+                Glyph { kind: root.icon; ink: root.tone; x: 5px; y: 5px; }
+            }
+
+            Text {
+                text: root.label;
+                color: Theme.faint;
+                font-size: 11px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+
+            VerticalLayout {
+                alignment: center;
+                Glyph { kind: 9; ink: #ffffff33; }
+            }
+        }
+
+        Text {
+            text: root.value;
+            color: root.value-color;
+            font-size: 18px;
+            font-weight: 600;
+            overflow: elide;
+        }
+    }
+}
+
+component Badge inherits Rectangle {
+    in property <string> label;
+    in property <color> tone: Theme.dim;
+
+    height: 24px;
+    // 宽度必须把圆点(6) + 两侧内边距 + 间距都算进去，否则文字挤出框外。
+    width: label-text.preferred-width + 40px;
+    border-radius: 6px;
+    background: Theme.card-hi;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 10px;
+        spacing: 7px;
+        // 圆点套一层 VerticalLayout 才能真正在框内垂直居中：
+        // 直接给 Rectangle 设 height 时，HorizontalLayout 默认按顶部对齐，圆点会跑出框外。
+        VerticalLayout {
+            width: 6px;
+            alignment: center;
+            Rectangle {
+                width: 6px; height: 6px; border-radius: 3px;
+                background: root.tone;
+            }
+        }
+        label-text := Text {
+            text: root.label;
+            color: root.tone;
+            font-size: 11.5px;
+            vertical-alignment: center;
+        }
+    }
+}
+
+component Btn inherits Rectangle {
+    in property <string> label;
+    in property <bool> primary: false;
+    in property <bool> enabled: true;
+    callback clicked();
+
+    height: 34px;
+    width: btn-text.preferred-width + 34px;
+    border-radius: 9px;
+    background: !root.enabled ? #171c23
+        : (root.primary ? (bt.has-hover ? @linear-gradient(100deg, #5fe83c 0%, #7bf25c 100%)
+                                       : @linear-gradient(100deg, #46d92d 0%, #63ea41 100%))
+                        : (bt.has-hover ? #242b35 : #1b212a));
+    border-width: 1px;
+    border-color: !root.enabled ? #ffffff10 : (root.primary ? #ffffff26 : #ffffff1a);
+    // 只有主按钮带绿光。次级按钮必须把颜色也置空：blur 为 0 时 Slint 仍会
+    // 画一圈硬阴影，暗底上就是一条洗不掉的绿边，看着像按钮漏光。
+    drop-shadow-blur: root.primary && root.enabled ? 16px : 0px;
+    drop-shadow-color: root.primary && root.enabled ? #46d92d40 : transparent;
+    drop-shadow-offset-y: root.primary && root.enabled ? 4px : 0px;
+
+    btn-text := Text {
+        text: root.label;
+        // 禁用态必须先判：否则 primary 的近黑字配深灰底会完全看不清。
+        color: !root.enabled ? Theme.dim : (root.primary ? Theme.accent-ink : Theme.text);
+        font-size: 12.5px;
+        font-weight: root.primary ? 600 : 400;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: parent.width;
+        height: parent.height;
+    }
+
+    bt := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// 行内小按钮：上移 / 下移 / 删除这类只用图标的地方。
+component MiniBtn inherits Rectangle {
+    in property <string> label;
+    in property <bool> enabled: true;
+    in property <color> tone: Theme.dim;
+    callback clicked();
+
+    width: 28px;
+    height: 24px;
+    border-radius: 6px;
+    background: mb.has-hover && root.enabled ? Theme.hover : transparent;
+    border-width: 1px;
+    border-color: root.enabled ? #404653 : transparent;
+
+    Text {
+        text: root.label;
+        color: root.enabled ? root.tone : Theme.faint;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: parent.width;
+        height: parent.height;
+    }
+
+    mb := TouchArea {
+        enabled: root.enabled;
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+component Chip inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected: false;
+    callback clicked();
+
+    height: 30px;
+    width: chip-text.preferred-width + 26px;
+    border-radius: 15px;
+    background: root.selected ? Theme.accent-soft : (ct.has-hover ? #ffffff10 : #12161c);
+    border-width: 1px;
+    border-color: root.selected ? #46d92d99 : #ffffff16;
+
+    chip-text := Text {
+        text: root.label;
+        color: root.selected ? Theme.accent-hi : Theme.dim;
+        font-weight: root.selected ? 600 : 400;
+        font-size: 12px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: parent.width;
+        height: parent.height;
+    }
+
+    ct := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// 分段控件里的一格。三段并排、等宽撑满，比三个整宽胶囊省一半垂直空间，
+// 也不会因为卡片窄而把标签挤成两行。
+component SegItem inherits Rectangle {
+    in property <string> label;
+    in property <string> hint: "";
+    in property <bool> selected: false;
+    callback clicked();
+
+    horizontal-stretch: 1;
+    border-radius: 7px;
+    background: root.selected ? Theme.accent-soft : (seg-ta.has-hover ? #ffffff10 : transparent);
+    border-width: root.selected ? 1px : 0px;
+    border-color: #46d92d80;
+
+    VerticalLayout {
+        alignment: center;
+        spacing: 0px;
+
+        seg-text := Text {
+            text: root.label;
+            color: root.selected ? Theme.accent-hi : Theme.dim;
+            font-weight: root.selected ? 600 : 400;
+            font-size: 11.5px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+
+        if root.hint != "" : Text {
+            text: root.hint;
+            color: root.selected ? #9bd88a : Theme.faint;
+            font-size: 9.5px;
+            horizontal-alignment: center;
+            vertical-alignment: center;
+        }
+    }
+
+    seg-ta := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// 深色输入框：std-widgets 的 LineEdit 自带浅底，在暗色卡面里像贴了块白纸，
+// 所以用 TextInput 自绘外观。
+component Field inherits Rectangle {
+    in-out property <string> text;
+    in property <string> placeholder: "";
+    callback edited(string);
+    callback accepted(string);
+
+    height: 34px;
+    border-radius: 9px;
+    background: #0e1218;
+    border-width: 1px;
+    border-color: fi.has-focus ? #46d92d80 : #ffffff17;
+    clip: true;
+
+    if root.text == "" : Text {
+        x: 12px;
+        y: 0;
+        height: parent.height;
+        text: root.placeholder;
+        color: Theme.faint;
+        font-size: 12px;
+        vertical-alignment: center;
+        overflow: elide;
+    }
+
+    fi := TextInput {
+        x: 11px;
+        y: 0;
+        width: parent.width - 22px;
+        height: parent.height;
+        text <=> root.text;
+        color: Theme.text;
+        font-size: 12.5px;
+        vertical-alignment: center;
+        edited => { root.edited(root.text); }
+        accepted => { root.accepted(root.text); }
+    }
+}
+
+// ── 鼠标示意图上的可点按键 ──
+// 底图是真机渲染图（assets/basilisk.png，448×700 裁到 388×558，已抠掉黑底、保留 RGB 光晕）。
+// 每个热区的坐标都是在这张图上量出来的：热区管「点得到」，胶囊光斑管「这是哪个键」。
+// 机身、键缝、滚轮、logo 全部由图片呈现，不再手画，所以按键位置不会偏。
+component MouseKey inherits Rectangle {
+    in property <int> bid;
+    in property <string> label: "";
+    in property <bool> selected: false;
+    // 底面键在俯视图里看不到，只能画成独立小卡片，靠文字标出来。
+    in property <bool> chip: false;
+    // 1=← 2=→ 3=↑ 4=↓：滚轮五向键靠三角读方向，光斑只负责标位置。
+    in property <int> arrow: 0;
+    in property <length> label-size: 10px;
+    // 光圈相对热区的收缩比：主键热区大、光圈要小；小键热区本就贴着键，光圈照满。
+    in property <float> glow: 1.0;
+    out property <bool> hot: mk.has-hover;
+    callback picked(int);
+
+    // x / y / width / height 由调用处给：图上的键用源图百分比，底面键用 px。
+
+    border-radius: 8px;
+    background: root.chip
+        ? (root.selected ? Theme.accent-soft : (mk.has-hover ? Theme.hover : Theme.card-hi))
+        : transparent;
+    border-width: root.chip ? (root.selected ? 1.5px : 1px) : 0px;
+    border-color: root.selected ? Theme.accent : Theme.border;
+
+    // 光斑：热区只负责「点得到」，画出来的光圈按 glow 收进键面。
+    // 主键那种大片热区靠这一层收缩，圆圈才不会顶出机身外缘。
+    Rectangle {
+        visible: !root.chip;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        width: parent.width * root.glow;
+        height: parent.height * root.glow;
+        border-radius: min(self.width, self.height) / 2;
+        background: root.selected ? #44d62c33 : (mk.has-hover ? #ffffff18 : transparent);
+        border-width: root.selected ? 1.5px : 0px;
+        border-color: Theme.accent;
+    }
+
+    Text {
+        visible: root.label != "";
+        text: root.label;
+        color: root.selected ? Theme.accent : Theme.dim;
+        font-size: root.label-size;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+        width: parent.width;
+        height: parent.height;
+        overflow: elide;
+    }
+
+    mk := TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.picked(root.bid); }
+    }
+
+    Path {
+        visible: root.arrow != 0 && (root.selected || mk.has-hover);
+        x: (parent.width - 9px) / 2;
+        y: (parent.height - 9px) / 2;
+        width: 9px;
+        height: 9px;
+        viewbox-width: 9;
+        viewbox-height: 9;
+        commands: root.arrow == 1 ? "M 8 1.5 L 1 4.5 L 8 7.5 Z"
+                : root.arrow == 2 ? "M 1 1.5 L 8 4.5 L 1 7.5 Z"
+                : root.arrow == 3 ? "M 1 8 L 4.5 1 L 8 8 Z"
+                : "M 1 1 L 4.5 8 L 8 1 Z";
+        fill: root.selected ? #44d62c : #f2f4f8;
+    }
+}
+
+// 图上每个可点热区的坐标表。
+// ux/uy/uw/uh 都是底图源像素（388×558，裁自官方渲染图），渲染时换算成容器百分比：
+// 图片被布局拉伸或压窄时，热区跟着一起走，不会和按键错开。
+struct HitKey {
+    bid: int,
+    ux: float,
+    uy: float,
+    uw: float,
+    uh: float,
+    glow: float,
+    arrow: int,
+}
+
+// 引线标注表：官方按键对照图的做法——锚点钉在键上，引线拉到图外，名字写在旁边。
+// line 用的是和底图完全相同的坐标系（388×558 源像素），Path 靠 viewbox 缩放，
+// 所以图片怎么缩，引线都钉在同一个键上，不会和机身脱节。
+struct Callout {
+    bid: int,
+    text: string,
+    side: int,   // -1 标签在左、1 标签在右
+    ly: float,   // 文字中线（源 y）
+    ax: float,   // 锚点（源 x/y）
+    ay: float,
+    line: string,
+}
+
+// 鼠标俯视图：真机渲染图垫底，热区 + 锚点 + 引线 + 标签共用一套源图坐标。
+// 只有光斑没有名字，看的人根本不知道哪个是 DPI、哪个是狙击键——所以补上引线标注。
+component MouseMap inherits Rectangle {
+    in property <int> selected: -1;
+    callback picked(int);
+
+    min-width: 304px;
+    max-width: 304px;
+    min-height: 334px;
+    max-height: 334px;
+    background: transparent;
+
+    // 坐标全部在源图上量出来：左右主键、滚轮五向、滚轮后上下两颗、左侧三颗拇指键。
+    // 每块热区都压在图片里真实的按键上：y 区间不重叠，点哪颗就是哪颗。
+    property <[HitKey]> keys: [
+        { bid: 1  , ux: 114, uy: 80, uw: 62, uh: 124, glow: 0.72, arrow: 0 },
+        { bid: 2  , ux: 262, uy: 80, uw: 61, uh: 124, glow: 0.72, arrow: 0 },
+        { bid: 9  , ux: 193, uy: 108, uw: 44, uh: 32, glow: 1.00, arrow: 3 },
+        { bid: 3  , ux: 193, uy: 140, uw: 44, uh: 36, glow: 1.00, arrow: 0 },
+        { bid: 10 , ux: 193, uy: 176, uw: 44, uh: 26, glow: 1.00, arrow: 4 },
+        { bid: 52 , ux: 178, uy: 132, uw: 24, uh: 26, glow: 1.00, arrow: 1 },
+        { bid: 53 , ux: 236, uy: 132, uw: 24, uh: 26, glow: 1.00, arrow: 2 },
+        // 滚轮后面两颗：**上面那颗是滚轮模式(106)，下面那颗才是 DPI(96)**。
+        { bid: 106, ux: 203, uy: 206, uw: 37, uh: 24, glow: 1.00, arrow: 0 },
+        { bid: 96 , ux: 203, uy: 235, uw: 37, uh: 27, glow: 1.00, arrow: 0 },
+        { bid: 15 , ux: 120, uy: 252, uw: 68, uh: 56, glow: 1.00, arrow: 0 },
+        { bid: 5  , ux: 126, uy: 308, uw: 64, uh: 46, glow: 1.00, arrow: 0 },
+        { bid: 4  , ux: 126, uy: 354, uw: 64, uh: 46, glow: 1.00, arrow: 0 },
+    ];
+
+    // 12 条标注：左右各一列，顺序按锚点 y 排，引线不交叉。
+    property <[Callout]> marks: [
+        { bid: 1  , text: "左键", side: -1, ly: 92, ax: 152, ay: 126,
+          line: "M 0 92 L 152 126" },
+        { bid: 52 , text: "左倾", side: -1, ly: 150, ax: 187, ay: 143,
+          line: "M 0 150 L 187 143" },
+        { bid: 3  , text: "中键", side: -1, ly: 208, ax: 215, ay: 158,
+          line: "M 0 208 L 215 158" },
+        { bid: 15 , text: "狙击", side: -1, ly: 268, ax: 130, ay: 274,
+          line: "M 0 268 L 130 274" },
+        { bid: 5  , text: "前进", side: -1, ly: 318, ax: 140, ay: 326,
+          line: "M 0 318 L 140 326" },
+        { bid: 4  , text: "后退", side: -1, ly: 372, ax: 148, ay: 372,
+          line: "M 0 372 L 148 372" },
+        { bid: 2  , text: "右键", side: 1, ly: 92, ax: 276, ay: 112,
+          line: "M 388 92 L 276 112" },
+        { bid: 9  , text: "上滚", side: 1, ly: 138, ax: 215, ay: 122,
+          line: "M 388 138 L 215 122" },
+        { bid: 53 , text: "右倾", side: 1, ly: 184, ax: 245, ay: 144,
+          line: "M 388 184 L 245 144" },
+        { bid: 10 , text: "下滚", side: 1, ly: 226, ax: 215, ay: 188,
+          line: "M 388 226 L 215 188" },
+        { bid: 106, text: "滚轮模式", side: 1, ly: 268, ax: 221, ay: 218,
+          line: "M 388 268 L 221 218" },
+        { bid: 96 , text: "DPI", side: 1, ly: 312, ax: 221, ay: 249,
+          line: "M 388 312 L 221 249" },
+    ];
+
+    // 图 + 热区 + 引线同一个容器：共用一套源图坐标，缩放多少都对得上。
+    pic := Rectangle {
+        x: 46px;
+        y: 0;
+        width: 192px;
+        height: 276px;
+        background: transparent;
+
+        Image {
+            width: parent.width;
+            height: parent.height;
+            source: @image-url("../assets/basilisk.png");
+            image-fit: fill;
+        }
+        // 线缆从画面顶边切进来，用卡片色渐隐把断口盖掉，图才像「放」在卡面上。
+        // 颜色必须贴卡片上半部的实际底色（#1A2029 一带），之前写成 #24272E
+        // 比卡面亮一截，看起来就是图上方横着一条灰杠。
+        Rectangle {
+            x: 0;
+            y: 0;
+            width: parent.width;
+            height: 26px;
+            background: @linear-gradient(180deg, #1a2029 0%, #1a202900 100%);
+        }
+
+        // 引线：viewbox 直接写源图尺寸，线跟着图片一起缩。
+        for c in root.marks : Path {
+            width: pic.width;
+            height: pic.height;
+            viewbox-width: 388;
+            viewbox-height: 558;
+            commands: c.line;
+            stroke-width: root.selected == c.bid ? 1.4px : 1px;
+            stroke: root.selected == c.bid ? Theme.accent : #c3cddb8a;
+        }
+
+        for spec in root.keys : MouseKey {
+            x: pic.width * (spec.ux / 388);
+            y: pic.height * (spec.uy / 558);
+            width: pic.width * (spec.uw / 388);
+            height: pic.height * (spec.uh / 558);
+            bid: spec.bid;
+            glow: spec.glow;
+            arrow: spec.arrow;
+            selected: root.selected == spec.bid;
+            picked(id) => { root.picked(id); }
+        }
+
+        // 锚点压在键面上，选中时变大变绿——「这个标签说的就是这一颗」。
+        for c in root.marks : Rectangle {
+            x: pic.width * (c.ax / 388) - self.width / 2;
+            y: pic.height * (c.ay / 558) - self.height / 2;
+            width: root.selected == c.bid ? 5px : 4px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: root.selected == c.bid ? Theme.accent : #dfe6f2;
+            border-width: 1px;
+            border-color: #101216cc;
+        }
+    }
+
+    // 左右两列标签：贴着图外缘，点标签等于点按键。
+    for c in root.marks : Rectangle {
+        x: c.side < 0 ? 0px : 246px;
+        y: pic.height * (c.ly / 558) - 11px;
+        width: c.side < 0 ? 40px : 58px;
+        height: 22px;
+        background: transparent;
+
+        Text {
+            text: c.text;
+            color: root.selected == c.bid ? Theme.accent : Theme.dim;
+            font-size: 11px;
+            font-weight: root.selected == c.bid ? 600 : 400;
+            horizontal-alignment: c.side < 0 ? right : left;
+            vertical-alignment: center;
+            width: parent.width;
+            height: parent.height;
+            overflow: elide;
+        }
+        TouchArea {
+            mouse-cursor: pointer;
+            clicked => { root.picked(c.bid); }
+        }
+    }
+
+    // ── 底面两颗：俯视图完全看不到，只能单独标出来 ──
+    Text {
+        x: 0;
+        y: 282px;
+        width: parent.width;
+        height: 14px;
+        text: "底面按键 · 俯视看不到";
+        color: Theme.faint;
+        font-size: 9.5px;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+    MouseKey { bid: 14; label: "Profile"; chip: true; label-size: 10px; x: 4px; y: 302px; width: 296px; height: 26px; selected: root.selected == 14; picked(id) => { root.picked(id); } }
+}
+
+// 顶栏运行模式分段开关：一眼可见、随手可切。选中项用实心强调色。
+component ModeSwitch inherits Rectangle {
+    in property <bool> online;
+    callback toggled(bool);
+
+    height: 32px;
+    width: 152px;
+    border-radius: 9px;
+    background: Theme.card-hi;
+    border-width: 1px;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding: 3px;
+        spacing: 3px;
+        Rectangle {
+            border-radius: 6px;
+            background: !root.online ? Theme.accent : transparent;
+            HorizontalLayout {
+                Text {
+                    text: "离线";
+                    color: !root.online ? #0b1508 : Theme.dim;
+                    font-size: 12px;
+                    font-weight: !root.online ? 600 : 400;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            off-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.toggled(false); }
+            }
+        }
+        Rectangle {
+            border-radius: 6px;
+            background: root.online ? Theme.accent : transparent;
+            HorizontalLayout {
+                Text {
+                    text: "在线";
+                    color: root.online ? #0b1508 : Theme.dim;
+                    font-size: 12px;
+                    font-weight: root.online ? 600 : 400;
+                    horizontal-alignment: center;
+                    vertical-alignment: center;
+                }
+            }
+            on-ta := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.toggled(true); }
+            }
+        }
+    }
+}
+
+component Swatch inherits Rectangle {
+    in property <color> c;
+    in property <bool> selected: false;
+    callback clicked();
+
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: root.c;
+    border-width: root.selected ? 2px : 1px;
+    border-color: root.selected ? Theme.text : #404653;
+
+    TouchArea {
+        mouse-cursor: pointer;
+        clicked => { root.clicked(); }
+    }
+}
+
+// 自绘滑条：std-widgets 的 Slider 在深色底上不协调，而且要多带一堆样式代码。
+component Slider100 inherits Rectangle {
+    in-out property <int> value: 50;
+    callback changed(int);
+
+    height: 26px;
+    background: transparent;
+
+    Rectangle {
+        x: 0;
+        y: 10px;
+        height: 6px;
+        width: parent.width;
+        border-radius: 3px;
+        background: Theme.card-hi;
+    }
+    Rectangle {
+        x: 0;
+        y: 10px;
+        height: 6px;
+        width: parent.width * (root.value / 100.0);
+        border-radius: 3px;
+        background: Theme.accent;
+    }
+    Rectangle {
+        x: (parent.width - 14px) * (root.value / 100.0);
+        y: 6px;
+        width: 14px;
+        height: 14px;
+        border-radius: 7px;
+        background: Theme.text;
+        border-width: 2px;
+        border-color: Theme.accent;
+    }
+
+    ta := TouchArea {
+        mouse-cursor: pointer;
+        function pick(mx: length) {
+            root.value = Math.max(0, Math.min(100, Math.round(mx / root.width * 100)));
+            root.changed(root.value);
+        }
+        moved => { pick(self.mouse-x); }
+        clicked => { pick(self.mouse-x); }
+    }
+}
+
+// 一个灯区的完整设置行：效果 / 颜色 / 亮度 / 数值压在同一行。
+// 原来拆成上下两行，颜色圆点和 60% 处的滑柄正好落在同一个 x，
+// 三区连起来像一列莫名对齐的绿点，看着比实际更乱。
+component LedRow inherits Rectangle {
+    in property <string> label;
+    in property <int> effect;
+    in property <color> colour;
+    in property <int> bright;
+    callback set-effect(int);
+    callback set-bright(int);
+
+    height: 34px;
+    background: transparent;
+
+    HorizontalLayout {
+        padding-left: 14px;
+        padding-right: 14px;
+        spacing: 8px;
+
+        Text { text: root.label; color: Theme.dim; font-size: 12px; vertical-alignment: center; width: 36px; }
+        Chip { label: "静态"; selected: root.effect == 1; clicked => { root.set-effect(1); } }
+        Chip { label: "光谱"; selected: root.effect == 3; clicked => { root.set-effect(3); } }
+        Chip { label: "波浪"; selected: root.effect == 4; clicked => { root.set-effect(4); } }
+
+        VerticalLayout {
+            width: 18px;
+            alignment: center;
+            Rectangle {
+                width: 16px; height: 16px; border-radius: 8px;
+                background: root.colour;
+                border-width: 1px; border-color: Theme.border;
+            }
+        }
+
+        Rectangle {
+            width: 200px;
+            height: 26px;
+            background: transparent;
+            Slider100 {
+                width: parent.width;
+                value: root.bright;
+                changed(v) => { root.set-bright(v); }
+            }
+        }
+        Text {
+            text: root.bright + "%";
+            color: Theme.faint;
+            font-size: 11px;
+            vertical-alignment: center;
+            width: 34px;
+        }
+        Rectangle { horizontal-stretch: 1; background: transparent; }
+    }
+}
+
+// ───────────────────────────── 主窗口 ─────────────────────────────
+
+export component AppWindow inherits Window {
+    title: "RazerMate — Basilisk V3";
+    // 初始尺寸用 preferred，只给下限不给上限：Slint 把 width/height 当固定尺寸，
+    // 一旦写死，winit 会判定窗口不可缩放并禁用最大化按钮。min 保证内容不挤坏。
+    preferred-width: 980px;
+    preferred-height: 680px;
+    min-width: 900px;
+    min-height: 620px;
+    background: Theme.bg;
+    default-font-family: "Microsoft YaHei UI";
+    default-font-size: 13px;
+
+    in-out property <int> page: 0;
+    in-out property <bool> busy: false;
+    in-out property <bool> connected: false;
+    in-out property <string> status-text: "正在连接设备…";
+    in-out property <string> toast: "";
+
+    in-out property <string> dev-name: "Basilisk V3";
+    in-out property <string> dev-path: "—";
+    in-out property <string> firmware: "—";
+    in-out property <string> mode-text: "—";
+    in-out property <int> active-slot: -1;
+    in-out property <string> slot-name: "—";
+    in-out property <float> flash-ratio: 0;
+    in-out property <string> flash-text: "—";
+
+    in-out property <int> button-count: 0;
+    in-out property <[ButtonRow]> buttons: [];
+    in-out property <int> macro-count: 0;
+    in-out property <string> macro-bytes: "—";
+    in-out property <[MacroRow]> macros: [];
+
+    in-out property <string> light-effect: "—";
+    in-out property <int> light-brightness: 0;
+    in-out property <color> light-colour: #44d62c;
+    in-out property <string> light-region: "—";
+    in-out property <[LightRow]> lights: [];
+
+    in-out property <string> dpi-text: "—";
+    in-out property <string> polling-text: "—";
+    in-out property <[StageRow]> stages: [];
+
+    in-out property <[SlotRow]> slots: [];
+
+    // ── 后台服务与自动切换 ──
+    in-out property <bool> agent-running: false;
+    in-out property <bool> agent-paused: false;
+    in-out property <string> agent-detail: "查询中…";
+    in-out property <bool> auto-enabled: true;
+    in-out property <int> auto-poll: 800;
+    in-out property <int> auto-default: 0;
+    in-out property <[RuleRow]> rules: [];
+    in-out property <string> fg-exe: "—";
+    in-out property <string> new-exe: "";
+    in-out property <int> new-slot: 0;
+
+    // ── 在线模式 / 虚拟槽 ──
+    in-out property <bool> vs-enabled: false;
+    in-out property <[VsRow]> vs-slots: [];
+    in-out property <string> vs-current: "";
+    in-out property <string> vs-edit-id: "";
+    in-out property <string> vs-edit-name: "";
+    in-out property <string> vs-edit-exes: "";
+    in-out property <string> vs-edit-dpi: "";
+    in-out property <int> vs-edit-polling: 1000;
+    in-out property <int> vs-edit-strip-effect: 1;
+    in-out property <int> vs-edit-logo-effect: 1;
+    in-out property <int> vs-edit-wheel-effect: 1;
+    in-out property <color> vs-edit-strip-colour: #44d62c;
+    in-out property <color> vs-edit-logo-colour: #44d62c;
+    in-out property <color> vs-edit-wheel-colour: #44d62c;
+    in-out property <int> vs-edit-strip-bright: 60;
+    in-out property <int> vs-edit-logo-bright: 60;
+    in-out property <int> vs-edit-wheel-bright: 60;
+
+    // ── 宏编辑 ──
+    in-out property <int> macro-edit-id: -1;
+    in-out property <string> macro-edit-name: "";
+    in-out property <[StepRow]> macro-steps: [];
+    in-out property <int> step-sel: -1;
+    in-out property <int> step-kind: 0;
+    in-out property <string> step-arg: "";
+    in-out property <string> new-macro-id: "";
+    in-out property <string> macro-bytes-preview: "—";
+
+    // ── 设置页 ──
+    in-out property <string> backup-info: "还没有备份";
+    in-out property <bool> backup-exists: false;
+    in-out property <bool> autostart-on: false;
+
+    // ── 编辑状态 ──
+    in-out property <int> sel-button: -1;
+    in-out property <string> sel-button-name: "";
+    // 选中按键当前的动作文案，由 Rust 侧随按键列表一起算好，界面直接显示。
+    in-out property <string> sel-button-action: "";
+    // 启动后是否已经自动选过一次按键（Rust 侧一次性置位）。
+    in-out property <int> edit-kind: 0;
+    in-out property <string> edit-arg: "";
+    // 「录入组合键」：true 时焦点在录入区，键盘事件转成 edit-arg。
+    in-out property <bool> recording: false;
+    in-out property <bool> advanced-arg: false;
+    in-out property <string> macro-base: "";
+    in-out property <string> record-hint: "请按下组合键（例如 Ctrl+C）…";
+    callback key-captured(string, bool, bool, bool, bool);
+    callback finish-recording();
+
+    in-out property <int> sel-region: 10;
+    in-out property <int> sel-bright: 100;
+    in-out property <int> edit-effect: 1;
+    in-out property <int> edit-speed: 50;
+    in-out property <color> edit-colour: #44d62c;
+
+    in-out property <string> dpi-input: "";
+
+    callback refresh();
+    callback quit-app();
+
+    callback pick-button(int);
+    callback apply-binding(int, int, string);
+    callback cancel-binding();
+
+    callback pick-region(int);
+    callback apply-effect(int, int, color, int);
+    callback apply-brightness(int, int);
+    // 0=彩虹 1=渐变 2=流动 2 秒 3=还原板载灯效
+    callback preview-led(int);
+
+    callback apply-dpi(string);
+    callback apply-polling(int);
+    callback use-slot(int);
+
+    callback refresh-agent();
+    callback agent-start();
+    callback agent-stop();
+    callback agent-toggle-pause();
+    callback add-rule(string, int);
+    callback remove-rule(string);
+    callback apply-auto(bool, int, int);
+
+    // 在线模式 / 虚拟槽
+    callback vs-refresh();
+    callback vs-pick(string);
+    callback vs-new();
+    callback vs-save();
+    callback vs-delete();
+    callback vs-apply();
+    callback vs-set-enabled(bool);
+
+    // 宏编辑
+    callback open-macro(int);
+    callback close-macro();
+    callback pick-step(int);
+    callback add-step(int, string);
+    callback update-step(int, int, string);
+    callback remove-step(int);
+    callback move-step(int, int);
+    callback write-macro(int);
+    callback delete-macro(int);
+    callback new-macro(string);
+    callback scan-macros();
+
+    // 设置页
+    callback backup-save();
+    callback backup-restore();
+    callback backup-open-dir();
+    callback toggle-autostart();
+
+    // ── 背景：底色 + 四团品牌色晕，纯渐变，不加载贴图 ──
+    // 光晕压得很低（8%~12% alpha），只在暗部透出一点色，不抢卡片的对比度。
+    Rectangle {
+        background: @linear-gradient(180deg, #0b0e13 0%, #080a0e 55%, #07090d 100%);
+    }
+    Rectangle {
+        x: -220px; y: -300px;
+        width: 920px; height: 780px;
+        border-radius: 390px;
+        background: @radial-gradient(circle, #2ad34f26 0%, #2ad34f00 66%);
+    }
+    Rectangle {
+        x: parent.width - 460px; y: -220px;
+        width: 760px; height: 700px;
+        border-radius: 350px;
+        background: @radial-gradient(circle, #3b82f626 0%, #3b82f600 68%);
+    }
+    Rectangle {
+        x: parent.width - 560px; y: parent.height - 420px;
+        width: 820px; height: 700px;
+        border-radius: 350px;
+        background: @radial-gradient(circle, #a855f71a 0%, #a855f700 70%);
+    }
+    Rectangle {
+        x: -180px; y: parent.height - 380px;
+        width: 680px; height: 600px;
+        border-radius: 300px;
+        background: @radial-gradient(circle, #46d92d17 0%, #46d92d00 70%);
+    }
+
+    // ── 侧边栏 ──
+    HorizontalLayout {
+        x: 0;
+        y: 0;
+        width: parent.width;
+        height: parent.height;
+        spacing: 0;
+
+        Rectangle {
+            width: 204px;
+            background: #090b10cc;
+
+            // 1px 发丝分隔线，比整块换色更轻。
+            Rectangle {
+                x: parent.width - 1px; y: 0;
+                width: 1px; height: parent.height;
+                background: #ffffff0f;
+            }
+
+            VerticalLayout {
+                padding-left: 14px;
+                padding-right: 14px;
+                padding-top: 18px;
+                padding-bottom: 14px;
+                spacing: 2px;
+
+                Rectangle {
+                    height: 74px;
+                    background: transparent;
+                    HorizontalLayout {
+                        padding-left: 2px;
+                        spacing: 11px;
+                        VerticalLayout {
+                            alignment: center;
+                            Rectangle {
+                                width: 34px;
+                                height: 34px;
+                                border-radius: 9px;
+                                clip: true;
+                                Image {
+                                    source: @image-url("../assets/razer-logo.svg");
+                                    width: parent.width;
+                                    height: parent.height;
+                                }
+                            }
+                        }
+                        VerticalLayout {
+                            alignment: center;
+                            spacing: 4px;
+                            Text {
+                                text: "RazerMate";
+                                color: Theme.text;
+                                font-size: 16px;
+                                font-weight: 700;
+                                letter-spacing: 0.4px;
+                            }
+                            Text {
+                                text: "Basilisk V3 有线版";
+                                color: Theme.faint;
+                                font-size: 10.5px;
+                            }
+                        }
+                    }
+                }
+
+                Rectangle { height: 10px; background: transparent; }
+                NavGroup { title: "设备"; }
+                NavItem { label: "概览";   icon: 0; active: root.page == 0; clicked => { root.page = 0; } }
+                NavItem { label: "自定义"; icon: 1; active: root.page == 1; clicked => { root.page = 1; } }
+                NavItem { label: "宏";     icon: 4; active: root.page == 2; clicked => { root.page = 2; } }
+
+                if root.vs-enabled : NavGroup { title: "在线模式"; }
+                if root.vs-enabled : NavItem { label: "自动切换"; icon: 6; active: root.page == 3; clicked => { root.page = 3; root.refresh-agent(); } }
+
+                Rectangle { vertical-stretch: 1; background: transparent; }
+
+                NavItem { label: "重新读取设备"; icon: 8; clicked => { root.refresh(); } }
+            }
+        }
+
+        // ── 内容区 ──
+        VerticalLayout {
+            spacing: 0;
+
+            Rectangle {
+                height: 66px;
+                background: #ffffff05;
+
+                HorizontalLayout {
+                    padding-left: 26px;
+                    padding-right: 22px;
+                    spacing: 14px;
+
+                    VerticalLayout {
+                        alignment: center;
+                        spacing: 0px;
+                        Text {
+                            text: root.page == 0 ? "概览" : root.page == 1 ? "自定义" : root.page == 2 ? "宏" : "自动切换";
+                            color: Theme.text;
+                            font-size: 20px;
+                            font-weight: 600;
+                            letter-spacing: 0.2px;
+                        }
+                    }
+
+                    Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 88px;
+                            height: 26px;
+                            border-radius: 13px;
+                            background: root.connected ? #46d92d1a : #ff5a521a;
+                            border-width: 1px;
+                            border-color: root.connected ? #46d92d3d : #ff5a523d;
+                            HorizontalLayout {
+                                padding-left: 11px;
+                                padding-right: 12px;
+                                spacing: 7px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    Rectangle {
+                                        width: 6px; height: 6px; border-radius: 3px;
+                                        background: root.connected ? Theme.accent : Theme.danger;
+                                    }
+                                }
+                                Text {
+                                    text: root.connected ? "已连接" : "未连接";
+                                    color: root.connected ? #9cf07f : #ff9d97;
+                                    font-size: 11.5px;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+                    }
+
+                    VerticalLayout {
+                        alignment: center;
+                        ModeSwitch {
+                            online: root.vs-enabled;
+                            toggled(on) => { root.vs-set-enabled(on); }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    background: #ffffff0a;
+                }
+            }
+
+            ScrollView {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    padding: 22px;
+                    spacing: 16px;
+                    // 内容比可视区矮时，别把最后一张卡片拉高去填满。
+                    alignment: start;
+
+                    // ═══ 概览 ═══
+                    if root.page == 0 : VerticalLayout {
+                        spacing: 14px;
+
+                        // 主卡：左边身份，右边真机图。图从卡外裁进来，所以卡要 clip。
+                        Card {
+                            height: 176px;
+                            clip: true;
+
+                            Rectangle {
+                                x: parent.width - 460px; y: -140px;
+                                width: 560px; height: 420px;
+                                border-radius: 280px;
+                                background: @radial-gradient(circle, #46d92d33 0%, #46d92d00 70%);
+                            }
+
+                            // 真机渲染图（透明底，448×700）。只露上半身，
+                            // 底缘用渐隐融进卡面，右缘留 16px 呼吸位。
+                            Image {
+                                x: parent.width - 226px;
+                                y: 8px;
+                                width: 182px;
+                                height: 236px;
+                                source: @image-url("../assets/basilisk-hero.png");
+                                image-fit: contain;
+                            }
+
+                            Rectangle {
+                                x: parent.width - 226px; y: parent.height - 54px;
+                                width: 182px; height: 54px;
+                                background: @linear-gradient(180deg, #171d2500 0%, #171d25f2 100%);
+                            }
+
+                            // 图片左缘渐隐到卡面，避免硬切边。
+                            Rectangle {
+                                x: parent.width - 470px; y: 0;
+                                width: 214px; height: parent.height;
+                                background: @linear-gradient(90deg, #171d25ff 0%, #171d2500 100%);
+                            }
+
+                            HorizontalLayout {
+                                padding-left: 22px;
+                                padding-right: 22px;
+                                spacing: 16px;
+
+                                // 身份区只留标题 + 两枚胶囊。原先那块 78px 的 B3 徽标
+                                // 在 176px 主卡里被横向布局顶到上沿，和垂直居中的标题错开。
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 9px;
+
+                                    Text {
+                                        text: root.dev-name;
+                                        color: Theme.text;
+                                        font-size: 25px;
+                                        font-weight: 700;
+                                        letter-spacing: 0.4px;
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        Rectangle {
+                                            height: 22px;
+                                            border-radius: 11px;
+                                            background: #ffffff0d;
+                                            border-width: 1px;
+                                            border-color: #ffffff17;
+                                            HorizontalLayout {
+                                                padding-left: 10px;
+                                                padding-right: 10px;
+                                                Text {
+                                                    text: root.dev-path;
+                                                    color: Theme.dim;
+                                                    font-size: 11px;
+                                                    vertical-alignment: center;
+                                                    overflow: elide;
+                                                }
+                                            }
+                                        }
+                                        Rectangle {
+                                            height: 22px;
+                                            border-radius: 11px;
+                                            background: #ffffff0d;
+                                            border-width: 1px;
+                                            border-color: #ffffff17;
+                                            HorizontalLayout {
+                                                padding-left: 10px;
+                                                padding-right: 10px;
+                                                Text {
+                                                    text: "固件 " + root.firmware;
+                                                    color: Theme.dim;
+                                                    font-size: 11px;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                                    }
+                                }
+
+                                Rectangle { horizontal-stretch: 1; background: transparent; }
+                            }
+                        }
+
+                        // 四张指标卡：颜色只做识别，数值仍来自设备实测。
+                        HorizontalLayout {
+                            spacing: 12px;
+                            StatTile {
+                                icon: 0;
+                                tone: Theme.accent;
+                                label: "当前生效槽";
+                                value: root.slot-name;
+                                value-color: Theme.accent;
+                                horizontal-stretch: 1;
+                            }
+                            StatTile {
+                                icon: 1;
+                                tone: Theme.violet;
+                                label: "可编辑按键";
+                                value: root.button-count + " 个";
+                                horizontal-stretch: 1;
+                            }
+                            StatTile {
+                                icon: 2;
+                                tone: Theme.blue;
+                                label: "板载宏";
+                                value: root.macro-count + " 条";
+                                horizontal-stretch: 1;
+                            }
+                            StatTile {
+                                icon: 4;
+                                tone: Theme.amber;
+                                label: "灯效";
+                                value: root.light-effect;
+                                horizontal-stretch: 1;
+                            }
+                        }
+
+                        // Flash 占用：标签与明细一行，进度条整宽压到下面一行。
+                        // 之前把条塞进同一 HorizontalLayout，窄窗口下会被挤到文字上方，
+                        // 所以拆成上下两行，条宽跟随卡宽，不再受 flex 分配影响。
+                        Card {
+                            height: 58px;
+                            VerticalLayout {
+                                padding-left: 16px;
+                                padding-right: 16px;
+                                padding-top: 12px;
+                                padding-bottom: 12px;
+                                spacing: 8px;
+
+                                HorizontalLayout {
+                                    spacing: 12px;
+
+                                    Text {
+                                        text: "Flash 已用";
+                                        color: Theme.text;
+                                        font-size: 12.5px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                                    Text {
+                                        text: root.flash-text;
+                                        color: Theme.faint;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                        overflow: elide;
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 6px;
+                                    border-radius: 3px;
+                                    background: #ffffff1f;
+                                    clip: true;
+
+                                    Rectangle {
+                                        x: 0;
+                                        y: 0;
+                                        width: parent.width * root.flash-ratio;
+                                        height: parent.height;
+                                        border-radius: 3px;
+                                        background: @linear-gradient(90deg, #46d92d 0%, #7bf25c 100%);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ═══ 自定义：按键映射 + 灯光 + 配置槽位 ═══
+                    if root.page == 1 : VerticalLayout {
+                        spacing: 12px;
+
+                        HorizontalLayout {
+                            spacing: 12px;
+
+                            // 左：鼠标俯视图。点图上的按键就切到那个键，不再平铺一张表。
+                            Card {
+                                width: 316px;
+                                VerticalLayout {
+                                    alignment: center;
+                                    padding-top: 12px;
+                                    padding-bottom: 10px;
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+                                    spacing: 2px;
+                                    CardHead {
+                                        icon: 0;
+                                        tone: Theme.accent;
+                                        title: "按键";
+                                        sub: "点图上的键，或点右侧名字";
+                                    }
+                                    Rectangle { height: 4px; background: transparent; }
+                                    HorizontalLayout {
+                                        alignment: center;
+                                        MouseMap {
+                                            selected: root.sel-button;
+                                            picked(id) => { root.pick-button(id); }
+                                        }
+                                    }
+                                }
+                            }
+
+                        // 右侧始终只有一张卡：编辑面板 / 全键清单只换内容，不换卡片。
+                        // 之前是两张「if 条件卡」并排做兄弟节点，选中按键后那张
+                        // stretch 不生效，右边会空出一截（约 60px），看着就像没排齐。
+                        Card {
+                            horizontal-stretch: 1;
+                            if root.sel-button >= 0 : VerticalLayout {
+                                padding: 16px;
+                                spacing: 12px;
+                                alignment: start;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+
+                                    CardHead {
+                                        icon: 0;
+                                        tone: Theme.accent;
+                                        title: "修改「" + root.sel-button-name + "」";
+                                        horizontal-stretch: 1;
+                                    }
+
+                                    Rectangle {
+                                        height: 24px;
+                                        border-radius: 12px;
+                                        background: #46d92d1f;
+                                        border-width: 1px;
+                                        border-color: #46d92d47;
+                                        HorizontalLayout {
+                                            padding-left: 10px;
+                                            padding-right: 10px;
+                                            Text {
+                                                text: root.sel-button-action;
+                                                color: Theme.accent-hi;
+                                                font-size: 11.5px;
+                                                font-weight: 600;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Chip { label: "未绑定";     selected: root.edit-kind == 0; clicked => { root.edit-kind = 0; } }
+                                    Chip { label: "鼠标键";     selected: root.edit-kind == 1; clicked => { root.edit-kind = 1; root.edit-arg = "left"; } }
+                                    Chip { label: "组合键";     selected: root.edit-kind == 2; clicked => { root.edit-kind = 2; root.edit-arg = "ctrl+w"; } }
+                                    Chip { label: "DPI 动作";   selected: root.edit-kind == 3; clicked => { root.edit-kind = 3; root.edit-arg = "up"; } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Chip { label: "播放宏";       selected: root.edit-kind == 4; clicked => { root.edit-kind = 4; root.edit-arg = "0x0101x1"; } }
+                                    Chip { label: "媒体键";       selected: root.edit-kind == 5; clicked => { root.edit-kind = 5; root.edit-arg = "play"; } }
+                                    Chip { label: "切换到下一槽"; selected: root.edit-kind == 6; clicked => { root.edit-kind = 6; } }
+                                    Chip { label: "滚轮模式";     selected: root.edit-kind == 7; clicked => { root.edit-kind = 7; } }
+                                }
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Chip { label: "按住播放宏"; selected: root.edit-kind == 9;  clicked => { root.edit-kind = 9;  root.edit-arg = "0x0101"; } }
+                                    Chip { label: "开关播放宏"; selected: root.edit-kind == 10; clicked => { root.edit-kind = 10; root.edit-arg = "0x0101"; } }
+                                }
+
+                                if root.edit-kind == 8 : Text {
+                                    text: "该类型暂不支持编辑参数。";
+                                    color: Theme.warn;
+                                    font-size: 11px;
+                                    wrap: word-wrap;
+                                }
+
+                                // ── 参数区：点选为主，手填折叠兜底 ──
+                                if root.edit-kind != 0 && root.edit-kind != 6 && root.edit-kind != 7 && root.edit-kind != 8 : VerticalLayout {
+                                    spacing: 7px;
+
+                                    // 鼠标键：设备支持的 9 个鼠标动作一次列全。
+                                    if root.edit-kind == 1 : VerticalLayout {
+                                        spacing: 6px;
+                                        Text { text: "选一个鼠标动作"; color: Theme.dim; font-size: 11.5px; }
+                                        HorizontalLayout { spacing: 5px;
+                                            Chip { label: "左键";     selected: root.edit-arg == "left";     clicked => { root.edit-arg = "left"; } }
+                                            Chip { label: "右键";     selected: root.edit-arg == "right";    clicked => { root.edit-arg = "right"; } }
+                                            Chip { label: "中键";     selected: root.edit-arg == "middle";   clicked => { root.edit-arg = "middle"; } }
+                                            Chip { label: "后退";     selected: root.edit-arg == "back";     clicked => { root.edit-arg = "back"; } }
+                                            Chip { label: "前进";     selected: root.edit-arg == "forward";  clicked => { root.edit-arg = "forward"; } }
+                                        }
+                                        HorizontalLayout { spacing: 5px;
+                                            Chip { label: "滚轮上";   selected: root.edit-arg == "wheelup";   clicked => { root.edit-arg = "wheelup"; } }
+                                            Chip { label: "滚轮下";   selected: root.edit-arg == "wheeldown"; clicked => { root.edit-arg = "wheeldown"; } }
+                                            Chip { label: "滚轮左倾"; selected: root.edit-arg == "tiltleft";  clicked => { root.edit-arg = "tiltleft"; } }
+                                            Chip { label: "滚轮右倾"; selected: root.edit-arg == "tiltright"; clicked => { root.edit-arg = "tiltright"; } }
+                                        }
+                                    }
+
+                                    // 组合键：常用预设 + 真实键盘录入。
+                                    if root.edit-kind == 2 : VerticalLayout {
+                                        spacing: 6px;
+                                        Text { text: "点选常用组合，或按「录入组合键」后直接按键"; color: Theme.dim; font-size: 11.5px; }
+                                        HorizontalLayout { spacing: 5px;
+                                            Chip { label: "复制 Ctrl+C";   selected: root.edit-arg == "ctrl+c";   clicked => { root.edit-arg = "ctrl+c"; } }
+                                            Chip { label: "粘贴 Ctrl+V";   selected: root.edit-arg == "ctrl+v";   clicked => { root.edit-arg = "ctrl+v"; } }
+                                            Chip { label: "剪切 Ctrl+X";   selected: root.edit-arg == "ctrl+x";   clicked => { root.edit-arg = "ctrl+x"; } }
+                                            Chip { label: "全选 Ctrl+A";   selected: root.edit-arg == "ctrl+a";   clicked => { root.edit-arg = "ctrl+a"; } }
+                                        }
+                                        HorizontalLayout { spacing: 5px;
+                                            Chip { label: "保存 Ctrl+S";   selected: root.edit-arg == "ctrl+s";   clicked => { root.edit-arg = "ctrl+s"; } }
+                                            Chip { label: "撤销 Ctrl+Z";   selected: root.edit-arg == "ctrl+z";   clicked => { root.edit-arg = "ctrl+z"; } }
+                                            Chip { label: "重做 Ctrl+Y";   selected: root.edit-arg == "ctrl+y";   clicked => { root.edit-arg = "ctrl+y"; } }
+                                            Chip { label: "切换 Alt+Tab"; selected: root.edit-arg == "alt+tab"; clicked => { root.edit-arg = "alt+tab"; } }
+                                        }
+                                        HorizontalLayout { spacing: 8px;
+                                            Btn {
+                                                label: root.recording ? "录入中…按组合键" : "录入组合键";
+                                                enabled: !root.recording;
+                                                clicked => {
+                                                    root.recording = true;
+                                                    root.record-hint = "请按下组合键（例如 Ctrl+C）…";
+                                                    key-scope.focus();
+                                                }
+                                            }
+                                            if root.recording : Text {
+                                                text: root.record-hint;
+                                                color: Theme.accent;
+                                                font-size: 12px;
+                                                vertical-alignment: center;
+                                                horizontal-stretch: 1;
+                                                overflow: elide;
+                                            }
+                                            if !root.recording : Text {
+                                                text: "当前：" + root.edit-arg;
+                                                color: Theme.faint;
+                                                font-size: 11px;
+                                                vertical-alignment: center;
+                                                horizontal-stretch: 1;
+                                                overflow: elide;
+                                            }
+                                        }
+                                        // 录入焦点区：覆盖整个卡片， capturing 时才吃键盘事件。
+                                        key-scope := FocusScope {
+                                            width: 0px; height: 0px;
+                                            enabled: root.recording;
+                                            key-pressed(ev) => {
+                                                root.key-captured(ev.text, ev.modifiers.control, ev.modifiers.shift, ev.modifiers.alt, ev.modifiers.meta);
+                                                EventResult.accept
+                                            }
+                                        }
+                                    }
+
+                                    // DPI 动作
+                                    if root.edit-kind == 3 : VerticalLayout {
+                                        spacing: 6px;
+                                        Text { text: "选一个 DPI 动作"; color: Theme.dim; font-size: 11.5px; }
+                                        HorizontalLayout { spacing: 5px;
+                                            Chip { label: "提高一档"; selected: root.edit-arg == "up";    clicked => { root.edit-arg = "up"; } }
+                                            Chip { label: "降低一档"; selected: root.edit-arg == "down";  clicked => { root.edit-arg = "down"; } }
+                                            Chip { label: "循环档位"; selected: root.edit-arg == "cycle"; clicked => { root.edit-arg = "cycle"; } }
+                                        }
+                                    }
+
+                                    // 媒体键
+                                    if root.edit-kind == 5 : VerticalLayout {
+                                        spacing: 6px;
+                                        Text { text: "选一个媒体动作"; color: Theme.dim; font-size: 11.5px; }
+                                        HorizontalLayout { spacing: 5px;
+                                            Chip { label: "播放/暂停"; selected: root.edit-arg == "play";  clicked => { root.edit-arg = "play"; } }
+                                            Chip { label: "下一曲";   selected: root.edit-arg == "next";  clicked => { root.edit-arg = "next"; } }
+                                            Chip { label: "上一曲";   selected: root.edit-arg == "prev";  clicked => { root.edit-arg = "prev"; } }
+                                            Chip { label: "停止";     selected: root.edit-arg == "stop";  clicked => { root.edit-arg = "stop"; } }
+                                        }
+                                        HorizontalLayout { spacing: 5px;
+                                            Chip { label: "静音";     selected: root.edit-arg == "mute";   clicked => { root.edit-arg = "mute"; } }
+                                            Chip { label: "音量 +";   selected: root.edit-arg == "volup";  clicked => { root.edit-arg = "volup"; } }
+                                            Chip { label: "音量 −";   selected: root.edit-arg == "voldown"; clicked => { root.edit-arg = "voldown"; } }
+                                        }
+                                    }
+
+                                    // 宏：从 Flash 里已有的宏直接点选，不再手填 ID。
+                                    if root.edit-kind == 4 || root.edit-kind == 9 || root.edit-kind == 10 : VerticalLayout {
+                                        spacing: 6px;
+                                        Text {
+                                            text: root.edit-kind == 9 ? "选一个宏（按住期间循环，松开即停）"
+                                                : root.edit-kind == 10 ? "选一个宏（点一次开始，再点一次停止）"
+                                                : "选一个宏播放";
+                                            color: Theme.dim;
+                                            font-size: 11.5px;
+                                        }
+                                        if root.macros.length == 0 : Text {
+                                            text: "鼠标里还没有宏，先到「宏」页新建。";
+                                            color: Theme.warn;
+                                            font-size: 11.5px;
+                                            wrap: word-wrap;
+                                        }
+                                        for m in root.macros : Chip {
+                                            label: m.id-hex + " · " + m.summary;
+                                            selected: root.macro-base == m.id-hex;
+                                            clicked => {
+                                                root.macro-base = m.id-hex;
+                                                root.edit-arg = m.id-hex
+                                                    + (root.edit-kind == 4 ? "x1" : "");
+                                            }
+                                        }
+                                        if root.edit-kind == 4 : HorizontalLayout {
+                                            spacing: 5px;
+                                            Text { text: "播放次数"; color: Theme.faint; font-size: 11px; vertical-alignment: center; }
+                                            Chip { label: "1 次"; selected: root.edit-arg.ends-with("x1"); clicked => { root.edit-arg = root.macro-base + "x1"; } }
+                                            Chip { label: "2 次"; selected: root.edit-arg.ends-with("x2"); clicked => { root.edit-arg = root.macro-base + "x2"; } }
+                                            Chip { label: "3 次"; selected: root.edit-arg.ends-with("x3"); clicked => { root.edit-arg = root.macro-base + "x3"; } }
+                                        }
+                                    }
+
+                                    // 手填兜底：默认折叠，只有上面列表没覆盖的值才需要展开。
+                                    HorizontalLayout { spacing: 6px;
+                                        Chip {
+                                            label: root.advanced-arg ? "收起手动输入" : "手动输入（高级）";
+                                            selected: root.advanced-arg;
+                                            clicked => { root.advanced-arg = !root.advanced-arg; }
+                                        }
+                                        Text {
+                                            text: root.edit-kind == 2 ? "录入不支持的键可在此手填，如 ctrl+shift+z"
+                                                : root.edit-kind == 4 || root.edit-kind == 9 || root.edit-kind == 10 ? "手填格式：0x0101（宏 ID）"
+                                                : "手填格式见设备协议";
+                                            color: Theme.faint;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 1;
+                                            overflow: elide;
+                                        }
+                                    }
+                                    if root.advanced-arg : Field {
+                                        text: root.edit-arg;
+                                        edited(t) => { root.edit-arg = t; }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: end;
+                                    Btn { label: "取消"; clicked => { root.cancel-binding(); } }
+                                    Btn {
+                                        label: "写入";
+                                        primary: true;
+                                        // kind 8 = 该槽没上报这个键，没有可写的内容。
+                                        enabled: root.edit-kind != 8;
+                                        clicked => { root.apply-binding(root.sel-button, root.edit-kind, root.edit-arg); }
+                                    }
+                                }
+                            }
+
+                            // 没选按键时右半边给一句提示，避免整块空白。
+                            // 不点也能看全：12 个键的名字和当前动作一次列出来，
+                            // 位置看图、动作看这张表，行本身也能点。
+                            if root.sel-button < 0 : VerticalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 14px;
+                                    padding-top: 12px;
+                                    padding-bottom: 10px;
+                                    spacing: 2px;
+                                    alignment: start;
+
+                                    CardHead {
+                                        icon: 1;
+                                        tone: Theme.violet;
+                                        title: "按键功能";
+                                        sub: root.buttons.length + " 个键可改";
+                                    }
+
+                                    Rectangle { height: 4px; background: transparent; }
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        padding-left: 8px;
+                                        padding-right: 10px;
+                                        Text {
+                                            text: "按键";
+                                            width: 88px;
+                                            color: Theme.faint;
+                                            font-size: 10.5px;
+                                        }
+                                        Text {
+                                            text: "当前动作";
+                                            horizontal-stretch: 1;
+                                            color: Theme.faint;
+                                            font-size: 10.5px;
+                                        }
+                                    }
+
+                                    for b in root.buttons : Rectangle {
+                                        height: 28px;
+                                        border-radius: 8px;
+                                        background: row-ta.has-hover ? #ffffff0a : transparent;
+
+                                        HorizontalLayout {
+                                            padding-left: 8px;
+                                            padding-right: 8px;
+                                            spacing: 8px;
+                                            Text {
+                                                text: b.name;
+                                                width: 82px;
+                                                color: row-ta.has-hover ? Theme.text : Theme.dim;
+                                                font-size: 12px;
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                            }
+                                            Text {
+                                                text: b.action;
+                                                horizontal-stretch: 1;
+                                                color: b.supported ? Theme.text : Theme.faint;
+                                                font-size: 12px;
+                                                vertical-alignment: center;
+                                                overflow: elide;
+                                            }
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Glyph { kind: 9; ink: row-ta.has-hover ? Theme.accent : #ffffff26; }
+                                            }
+                                        }
+
+                                        Rectangle {
+                                            y: parent.height - 1px;
+                                            height: 1px;
+                                            background: #ffffff08;
+                                        }
+
+                                        row-ta := TouchArea {
+                                            mouse-cursor: pointer;
+                                            clicked => { root.pick-button(b.id); }
+                                        }
+                                    }
+
+                                    if root.buttons.length == 0 : Text {
+                                        text: root.connected ? "读不到按键表" : "设备未连接";
+                                        color: Theme.faint;
+                                        font-size: 12px;
+                                        horizontal-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 灯光（并入自定义页）
+                    if root.page == 1 : VerticalLayout {
+                        spacing: 12px;
+
+                        // 灯效总览：色块带同色光晕，像灯真的在亮。
+                        Card {
+                            height: 104px;
+                            clip: true;
+                            HorizontalLayout {
+                                padding-left: 22px;
+                                padding-right: 22px;
+                                padding-top: 18px;
+                                padding-bottom: 18px;
+                                spacing: 22px;
+
+                                Rectangle {
+                                    width: 80px;
+                                    height: 80px;
+
+                                    Rectangle {
+                                        x: -26px; y: -26px;
+                                        width: 128px; height: 128px;
+                                        border-radius: 64px;
+                                        background: @radial-gradient(circle, root.light-colour.transparentize(0.5) 0%, root.light-colour.transparentize(1.0) 68%);
+                                    }
+
+                                    Rectangle {
+                                        x: 9px; y: 9px;
+                                        width: 62px; height: 62px;
+                                        border-radius: 15px;
+                                        background: root.light-colour;
+                                        border-width: 1px;
+                                        border-color: #ffffff45;
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 7px;
+                                    Text { text: root.light-effect; color: Theme.text; font-size: 19px; font-weight: 600; }
+                                    Text { text: "亮度 " + root.light-brightness + "% · 区域 " + root.light-region; color: Theme.dim; font-size: 12px; }
+                                }
+
+                                Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                                Rectangle {
+                                    width: 1px;
+                                    height: 46px;
+                                    background: #ffffff14;
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 5px;
+                                    Text { text: "独立调光"; color: Theme.faint; font-size: 10.5px; }
+                                    Text { text: "下面三个灯区各自设色"; color: Theme.dim; font-size: 11.5px; }
+                                }
+                            }
+                        }
+
+                        Card {
+                            VerticalLayout {
+                                padding-top: 14px;
+                                padding-bottom: 12px;
+                                padding-left: 16px;
+                                padding-right: 16px;
+                                CardHead {
+                                    icon: 4;
+                                    tone: Theme.amber;
+                                    title: "灯区";
+                                    sub: "三个可独立控制 · 单击选择";
+                                }
+                                Rectangle { height: 8px; background: transparent; }
+
+                                for l in root.lights : Rectangle {
+                                    height: 36px;
+                                    background: transparent;
+
+                                    Rectangle {
+                                        x: 8px;
+                                        width: parent.width - 16px;
+                                        border-radius: 9px;
+                                        background: root.sel-region == l.region-id ? #46d92d14
+                                            : (reg-ta.has-hover ? #ffffff0a : transparent);
+                                        border-width: 1px;
+                                        border-color: root.sel-region == l.region-id ? #46d92d3d : transparent;
+                                    }
+
+                                    reg-ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.pick-region(l.region-id); }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 24px;
+                                        padding-right: 24px;
+                                        spacing: 10px;
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Rectangle {
+                                                width: 10px;
+                                                height: 10px;
+                                                border-radius: 5px;
+                                                background: l.colour;
+                                                border-width: 1px;
+                                                border-color: #ffffff33;
+                                            }
+                                        }
+                                        Text { text: l.region; width: 100px; color: Theme.dim; font-size: 12.5px; vertical-alignment: center; }
+                                        Text { text: l.effect; horizontal-stretch: 1; color: Theme.text; font-size: 12.5px; vertical-alignment: center; overflow: elide; }
+                                        Text { text: l.brightness; width: 56px; color: Theme.faint; font-size: 11.5px; horizontal-alignment: right; vertical-alignment: center; }
+                                    }
+                                }
+
+                                if root.lights.length == 0 : Rectangle {
+                                    height: 48px;
+                                    background: transparent;
+                                    Text {
+                                        text: root.connected ? "尚未读取到灯效数据" : "设备未连接";
+                                        color: Theme.faint;
+                                        font-size: 12px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        Card {
+                            VerticalLayout {
+                                padding: 16px;
+                                spacing: 12px;
+
+                                CardHead {
+                                    icon: 4;
+                                    tone: Theme.amber;
+                                    title: "设置灯效";
+                                    sub: "写入当前生效槽";
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 6px;
+                                    Chip { label: "静态色";   selected: root.edit-effect == 1; clicked => { root.edit-effect = 1; } }
+                                    Chip { label: "光谱循环"; selected: root.edit-effect == 3; clicked => { root.edit-effect = 3; } }
+                                    Chip { label: "波浪";     selected: root.edit-effect == 4; clicked => { root.edit-effect = 4; } }
+                                }
+
+                                if root.edit-effect == 1 : HorizontalLayout {
+                                    spacing: 8px;
+                                    Swatch { c: #44d62c; selected: root.edit-colour == #44d62c; clicked => { root.edit-colour = #44d62c; } }
+                                    Swatch { c: #ff2d2d; selected: root.edit-colour == #ff2d2d; clicked => { root.edit-colour = #ff2d2d; } }
+                                    Swatch { c: #ff8a1e; selected: root.edit-colour == #ff8a1e; clicked => { root.edit-colour = #ff8a1e; } }
+                                    Swatch { c: #ffd60a; selected: root.edit-colour == #ffd60a; clicked => { root.edit-colour = #ffd60a; } }
+                                    Swatch { c: #1ec8ff; selected: root.edit-colour == #1ec8ff; clicked => { root.edit-colour = #1ec8ff; } }
+                                    Swatch { c: #2d6bff; selected: root.edit-colour == #2d6bff; clicked => { root.edit-colour = #2d6bff; } }
+                                    Swatch { c: #a94bff; selected: root.edit-colour == #a94bff; clicked => { root.edit-colour = #a94bff; } }
+                                    Swatch { c: #ffffff; selected: root.edit-colour == #ffffff; clicked => { root.edit-colour = #ffffff; } }
+                                    Swatch { c: #000000; selected: root.edit-colour == #000000; clicked => { root.edit-colour = #000000; } }
+                                }
+
+                                if root.edit-effect == 4 : VerticalLayout {
+                                    spacing: 2px;
+                                    Text { text: "速度 " + root.edit-speed + "%"; color: Theme.dim; font-size: 12px; }
+                                    Slider100 {
+                                        value: root.edit-speed;
+                                        changed(v) => { root.edit-speed = v; }
+                                    }
+                                }
+
+                                VerticalLayout {
+                                    spacing: 2px;
+                                    Text { text: "亮度 " + root.sel-bright + "%"; color: Theme.dim; font-size: 12px; }
+                                    Slider100 {
+                                        value: root.sel-bright;
+                                        changed(v) => { root.sel-bright = v; }
+                                    }
+                                }
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    alignment: end;
+                                    Btn {
+                                        label: "只改亮度";
+                                        clicked => { root.apply-brightness(root.sel-region, root.sel-bright); }
+                                    }
+                                    Btn {
+                                        label: "写入灯效";
+                                        primary: true;
+                                        clicked => {
+                                            root.apply-effect(root.sel-region, root.edit-effect, root.edit-colour, root.edit-speed);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        Card {
+                            VerticalLayout {
+                                padding: 16px;
+                                spacing: 10px;
+
+                                CardHead {
+                                    icon: 4;
+                                    tone: Theme.violet;
+                                    title: "灯带预览";
+                                    sub: "运行时 · 不写 Flash";
+                                }
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Btn { label: "彩虹";     width: 80px;  clicked => { root.preview-led(0); } }
+                                    Btn { label: "渐变";     width: 80px;  clicked => { root.preview-led(1); } }
+                                    Btn { label: "流动 2 秒"; width: 104px; clicked => { root.preview-led(2); } }
+                                    Btn { label: "还原";     width: 80px; primary: true; clicked => { root.preview-led(3); } }
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                                }
+                            }
+                        }
+                    }
+
+                    // 性能（并入概览页）
+                    if root.page == 0 : VerticalLayout {
+                        spacing: 12px;
+
+                        HorizontalLayout {
+                            spacing: 12px;
+
+                            // ── DPI 档位 ──
+                            Card {
+                                horizontal-stretch: 1;
+                                VerticalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    padding-top: 14px;
+                                    padding-bottom: 14px;
+                                    spacing: 9px;
+                                    alignment: space-between;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        CardHead {
+                                            icon: 3;
+                                            tone: Theme.accent;
+                                            title: "DPI 设置";
+                                            horizontal-stretch: 1;
+                                        }
+                                        Rectangle {
+                                            height: 24px;
+                                            border-radius: 12px;
+                                            background: #46d92d1f;
+                                            border-width: 1px;
+                                            border-color: #46d92d47;
+                                            HorizontalLayout {
+                                                padding-left: 10px;
+                                                padding-right: 10px;
+                                                Text {
+                                                    text: root.dpi-text;
+                                                    color: Theme.accent-hi;
+                                                    font-size: 11.5px;
+                                                    font-weight: 600;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    for st in root.stages : Rectangle {
+                                        height: 30px;
+                                        border-radius: 9px;
+                                        background: st.active ? #46d92d14 : #ffffff05;
+                                        border-width: 1px;
+                                        border-color: st.active ? #46d92d3d : transparent;
+
+                                        HorizontalLayout {
+                                            padding-left: 12px;
+                                            padding-right: 12px;
+                                            spacing: 10px;
+
+                                            VerticalLayout {
+                                                alignment: center;
+                                                Rectangle {
+                                                    width: 6px; height: 6px; border-radius: 3px;
+                                                    background: st.active ? Theme.accent : #ffffff2e;
+                                                }
+                                            }
+                                            Text {
+                                                text: "第 " + (st.index + 1) + " 档";
+                                                width: 68px;
+                                                color: Theme.dim;
+                                                font-size: 12px;
+                                                vertical-alignment: center;
+                                            }
+                                            Text {
+                                                text: st.dpi;
+                                                horizontal-stretch: 1;
+                                                color: st.active ? Theme.accent-hi : Theme.text;
+                                                font-size: 13px;
+                                                font-weight: st.active ? 600 : 400;
+                                                vertical-alignment: center;
+                                            }
+                                            if st.active : Text {
+                                                text: "生效中";
+                                                color: Theme.accent;
+                                                font-size: 10.5px;
+                                                vertical-alignment: center;
+                                            }
+                                        }
+                                    }
+
+                                    if root.stages.length == 0 : Rectangle {
+                                        height: 54px;
+                                        border-radius: 9px;
+                                        background: #ffffff05;
+                                        Text {
+                                            text: root.connected ? "尚未读取到档位" : "设备未连接";
+                                            color: Theme.faint;
+                                            font-size: 12px;
+                                            horizontal-alignment: center;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+
+                                        Text {
+                                            text: "改 DPI";
+                                            color: Theme.faint;
+                                            font-size: 11.5px;
+                                            vertical-alignment: center;
+                                        }
+                                        Field {
+                                            text: root.dpi-input;
+                                            placeholder: "例如 3200";
+                                            horizontal-stretch: 1;
+                                            edited(t) => { root.dpi-input = t; }
+                                            accepted(t) => { root.dpi-input = t; root.apply-dpi(t); }
+                                        }
+                                        Btn {
+                                            label: "写入";
+                                            width: 76px;
+                                            primary: true;
+                                            clicked => { root.apply-dpi(root.dpi-input); }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: "档位随当前 Profile 走，写入立即生效。";
+                                        color: Theme.faint;
+                                        font-size: 10.5px;
+                                    }
+                                }
+                            }
+
+                            // ── 回报率 ──
+                            Card {
+                                width: 232px;
+                                VerticalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    padding-top: 14px;
+                                    padding-bottom: 14px;
+                                    spacing: 10px;
+                                    // 旁边的 DPI 卡比它高，内容靠上会像没排完；居中后上下留白对称。
+                                    alignment: center;
+
+                                    CardHead { icon: 6; tone: Theme.blue; title: "回报率"; sub: "设备级"; }
+
+                                    // 三档是互斥的枚举，不是三个独立开关：用分段控件表达，
+                                    // 一行就能看全三档和当前选中项。
+                                    Rectangle {
+                                        height: 46px;
+                                        border-radius: 10px;
+                                        background: #0d1116;
+                                        border-width: 1px;
+                                        border-color: #ffffff14;
+
+                                        HorizontalLayout {
+                                            padding: 3px;
+                                            spacing: 3px;
+                                            SegItem {
+                                                label: "125";
+                                                hint: "省电";
+                                                selected: root.polling-text == "125 Hz";
+                                                clicked => { root.apply-polling(125); }
+                                            }
+                                            SegItem {
+                                                label: "500";
+                                                hint: "均衡";
+                                                selected: root.polling-text == "500 Hz";
+                                                clicked => { root.apply-polling(500); }
+                                            }
+                                            SegItem {
+                                                label: "1000";
+                                                hint: "竞技";
+                                                selected: root.polling-text == "1000 Hz";
+                                                clicked => { root.apply-polling(1000); }
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        text: "单位 Hz。越高越跟手，也更吃 CPU。";
+                                        color: Theme.faint;
+                                        font-size: 10.5px;
+                                        wrap: word-wrap;
+                                    }
+                                    Text {
+                                        text: "设备级设置，切槽不跟着变。";
+                                        color: Theme.faint;
+                                        font-size: 10.5px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ═══ 宏 ═══
+                    if root.page == 2 : VerticalLayout {
+                        spacing: 12px;
+
+                        HorizontalLayout {
+                            spacing: 12px;
+                            StatTile { icon: 2; tone: Theme.blue; label: "宏条数"; value: root.macro-count + " 条"; horizontal-stretch: 1; }
+                            StatTile { icon: 6; tone: Theme.violet; label: "宏数据总量"; value: root.macro-bytes; horizontal-stretch: 1; }
+                        }
+
+                        Card {
+                            VerticalLayout {
+                                padding-top: 14px;
+                                padding-bottom: 12px;
+                                padding-left: 16px;
+                                padding-right: 16px;
+                                CardHead {
+                                    icon: 2;
+                                    tone: Theme.blue;
+                                    title: "板载宏清单";
+                                    sub: root.macro-count + " 条";
+                                }
+                                Rectangle { height: 8px; background: transparent; }
+
+                                if root.macros.length == 0 : Rectangle {
+                                    height: 112px;
+                                    border-radius: 10px;
+                                    background: #ffffff05;
+                                    border-width: 1px;
+                                    border-color: #ffffff10;
+                                    VerticalLayout {
+                                        alignment: center;
+                                        spacing: 7px;
+                                        HorizontalLayout {
+                                            alignment: center;
+                                            NavIcon { kind: 4; }
+                                        }
+                                        Text {
+                                            text: "Flash 里还没有宏";
+                                            color: Theme.text;
+                                            font-size: 13px;
+                                            font-weight: 600;
+                                            horizontal-alignment: center;
+                                        }
+                                        Text {
+                                            text: "输入宏 ID 点「新建」，或点「扫描 Flash」。";
+                                            color: Theme.dim;
+                                            font-size: 11.5px;
+                                            wrap: word-wrap;
+                                            horizontal-alignment: center;
+                                        }
+                                    }
+                                }
+
+                                for m in root.macros : Rectangle {
+                                    height: 34px;
+                                    background: transparent;
+
+                                    Rectangle {
+                                        x: 8px;
+                                        width: parent.width - 16px;
+                                        border-radius: 8px;
+                                        background: m.id == root.macro-edit-id ? Theme.accent-soft
+                                            : (mr.has-hover ? Theme.hover : transparent);
+                                    }
+
+                                    // 整行点击区放在内容之前，否则会把右边的按钮点击吞掉。
+                                    mr := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.open-macro(m.id); }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 24px;
+                                        padding-right: 24px;
+                                        spacing: 10px;
+                                        Text { text: "ID " + m.id-hex; width: 96px; color: m.id == root.macro-edit-id ? Theme.accent : Theme.dim; font-size: 12px; vertical-alignment: center; }
+                                        Text { text: m.size; width: 76px; color: Theme.faint; font-size: 11.5px; vertical-alignment: center; }
+                                        Text { text: m.summary; horizontal-stretch: 1; color: Theme.text; font-size: 12px; vertical-alignment: center; overflow: elide; }
+                                        MiniBtn { label: "编辑"; tone: Theme.accent; clicked => { root.open-macro(m.id); } }
+                                        MiniBtn { label: "删"; tone: Theme.danger; clicked => { root.delete-macro(m.id); } }
+                                    }
+                                }
+
+                                Rectangle { height: 8px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 24px;
+                                    padding-right: 24px;
+                                    spacing: 8px;
+                                    Field {
+                                        text: root.new-macro-id;
+                                        placeholder: "新宏 ID，十六进制，例如 0x0101";
+                                        width: 260px;
+                                        edited(t) => { root.new-macro-id = t; }
+                                        accepted(t) => { root.new-macro-id = t; root.new-macro(t); }
+                                    }
+                                    Btn {
+                                        // Layout 会压缩 preferred width，不给死宽度就会被后面的
+                                        // stretch 文字挤成一条缝，文字被压扁。
+                                        label: "新建";
+                                        width: 76px;
+                                        primary: true;
+                                        enabled: root.new-macro-id != "";
+                                        clicked => { root.new-macro(root.new-macro-id); }
+                                    }
+                                    Btn {
+                                        label: "扫描 Flash";
+                                        width: 108px;
+                                        clicked => { root.scan-macros(); }
+                                    }
+                                    Text {
+                                        text: "找不到之前存的宏就点「扫描」。";
+                                        color: Theme.faint;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                        horizontal-stretch: 1;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── 编辑面板 ──
+                        if root.macro-edit-id >= 0 : Card {
+                            VerticalLayout {
+                                padding-top: 12px;
+                                padding-bottom: 12px;
+
+                                HorizontalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    spacing: 8px;
+                                    Text {
+                                        text: "编辑宏 " + root.macro-edit-name;
+                                        color: Theme.text;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                    Badge { label: root.macro-bytes-preview; tone: Theme.dim; }
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                                    Btn { label: "关闭"; clicked => { root.close-macro(); } }
+                                    Btn {
+                                        label: "写入 Flash";
+                                        primary: true;
+                                        enabled: root.macro-steps.length > 0;
+                                        clicked => { root.write-macro(root.macro-edit-id); }
+                                    }
+                                }
+
+                                Rectangle { height: 8px; background: transparent; }
+
+                                if root.macro-steps.length == 0 : Rectangle {
+                                    height: 48px;
+                                    background: transparent;
+                                    Text {
+                                        text: "还没有步骤";
+                                        color: Theme.faint;
+                                        font-size: 11.5px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                for s in root.macro-steps : Rectangle {
+                                    height: 32px;
+                                    background: transparent;
+
+                                    Rectangle {
+                                        x: 8px;
+                                        width: parent.width - 16px;
+                                        border-radius: 8px;
+                                        background: s.index == root.step-sel ? Theme.card-hi
+                                            : (sr.has-hover ? Theme.hover : transparent);
+                                    }
+
+                                    sr := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.pick-step(s.index); }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 24px;
+                                        padding-right: 24px;
+                                        spacing: 8px;
+                                        Text { text: (s.index + 1) + "."; width: 26px; color: Theme.faint; font-size: 11.5px; vertical-alignment: center; }
+                                        Badge { label: s.kind-label; tone: s.index == root.step-sel ? Theme.accent : Theme.dim; }
+                                        Text { text: s.text; horizontal-stretch: 1; color: Theme.text; font-size: 12px; vertical-alignment: center; overflow: elide; }
+                                        Text { text: s.bytes + " B"; width: 44px; color: Theme.faint; font-size: 11px; vertical-alignment: center; horizontal-alignment: right; }
+                                        MiniBtn { label: "↑"; enabled: s.index > 0; clicked => { root.move-step(s.index, -1); } }
+                                        MiniBtn { label: "↓"; enabled: s.index < root.macro-steps.length - 1; clicked => { root.move-step(s.index, 1); } }
+                                        MiniBtn { label: "×"; tone: Theme.danger; clicked => { root.remove-step(s.index); } }
+                                    }
+                                }
+
+                                Rectangle { height: 10px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    spacing: 6px;
+                                    Text { text: "类型"; color: Theme.dim; font-size: 12px; vertical-alignment: center; width: 32px; }
+                                    Chip { label: "按键"; selected: root.step-kind == 0; clicked => { root.step-kind = 0; root.step-arg = "ctrl+c"; } }
+                                    Chip { label: "文本"; selected: root.step-kind == 1; clicked => { root.step-kind = 1; root.step-arg = "hello"; } }
+                                    Chip { label: "等待"; selected: root.step-kind == 2; clicked => { root.step-kind = 2; root.step-arg = "100"; } }
+                                    Chip { label: "鼠标"; selected: root.step-kind == 3; clicked => { root.step-kind = 3; root.step-arg = "left"; } }
+                                    Chip { label: "滚轮"; selected: root.step-kind == 4; clicked => { root.step-kind = 4; root.step-arg = "1"; } }
+                                    Chip { label: "媒体键"; selected: root.step-kind == 5; clicked => { root.step-kind = 5; root.step-arg = "play"; } }
+                                }
+
+                                Rectangle { height: 8px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    spacing: 8px;
+                                    Field {
+                                        text: root.step-arg;
+                                        placeholder: "参数";
+                                        horizontal-stretch: 1;
+                                        edited(t) => { root.step-arg = t; }
+                                        accepted(t) => { root.step-arg = t; root.add-step(root.step-kind, t); }
+                                    }
+                                    Btn {
+                                        label: "添加步骤";
+                                        width: 96px;
+                                        primary: true;
+                                        enabled: root.step-arg != "";
+                                        clicked => { root.add-step(root.step-kind, root.step-arg); }
+                                    }
+                                    Btn {
+                                        label: "改选中";
+                                        width: 84px;
+                                        enabled: root.step-sel >= 0 && root.step-arg != "";
+                                        clicked => { root.update-step(root.step-sel, root.step-kind, root.step-arg); }
+                                    }
+                                }
+
+                                Rectangle { height: 10px; background: transparent; }
+                            }
+                        }
+                    }
+
+                    // 配置槽位（并入自定义页）
+                    if root.page == 1 : VerticalLayout {
+                        spacing: 12px;
+
+                        Card {
+                            VerticalLayout {
+                                padding-top: 14px;
+                                padding-bottom: 14px;
+                                padding-left: 16px;
+                                padding-right: 16px;
+                                CardHead {
+                                    icon: 5;
+                                    tone: Theme.violet;
+                                    title: "配置槽位";
+                                    sub: "板载槽 · 单击切换生效槽";
+                                }
+                                Rectangle { height: 8px; background: transparent; }
+
+                                for s in root.slots : Rectangle {
+                                    height: 44px;
+                                    background: transparent;
+
+                                    Rectangle {
+                                        x: 8px;
+                                        width: parent.width - 16px;
+                                        border-radius: 8px;
+                                        background: slot-ta.has-hover ? Theme.hover : (s.active ? Theme.accent-soft : transparent);
+                                    }
+
+                                    slot-ta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.use-slot(s.index); }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 24px;
+                                        padding-right: 24px;
+                                        spacing: 10px;
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            Rectangle {
+                                                width: 4px;
+                                                height: 22px;
+                                                border-radius: 2px;
+                                                background: s.colour;
+                                            }
+                                        }
+                                        Text { text: s.index; width: 24px; color: Theme.faint; font-size: 12px; vertical-alignment: center; }
+                                        Text { text: s.name; width: 120px; color: s.active ? Theme.accent : Theme.text; font-size: 13px; vertical-alignment: center; }
+                                        Text { text: s.summary; horizontal-stretch: 1; color: Theme.dim; font-size: 11.5px; vertical-alignment: center; overflow: elide; }
+                                        Text { text: s.active ? "生效中" : ""; color: Theme.accent; font-size: 11px; vertical-alignment: center; }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 设置（并入概览页）
+                    if root.page == 0 : VerticalLayout {
+                        spacing: 12px;
+
+                        Card {
+                            VerticalLayout {
+                                padding-left: 16px;
+                                padding-right: 16px;
+                                padding-top: 14px;
+                                padding-bottom: 14px;
+                                spacing: 10px;
+                                alignment: start;
+
+                                CardHead { icon: 5; tone: Theme.violet; title: "设置"; sub: "备份、恢复与开机自启"; }
+
+                                // 备份条
+                                Rectangle {
+                                    height: 56px;
+                                    border-radius: 10px;
+                                    background: #ffffff05;
+                                    border-width: 1px;
+                                    border-color: #ffffff0f;
+
+                                    HorizontalLayout {
+                                        padding-left: 14px;
+                                        padding-right: 12px;
+                                        spacing: 10px;
+
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 3px;
+                                            Text { text: "最近备份"; color: Theme.faint; font-size: 10.5px; }
+                                            Text {
+                                                text: root.backup-info;
+                                                color: root.backup-exists ? Theme.text : Theme.faint;
+                                                font-size: 12.5px;
+                                                overflow: elide;
+                                            }
+                                        }
+
+                                        Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                                        // 固定高度的控件在横向布局里默认贴顶，不会跟着左侧
+                                        // 两行文字一起垂直居中；外面套一层纵向布局并居中，
+                                        // 三枚按钮才整体落在 56px 条的正中。
+                                        VerticalLayout {
+                                            width: 300px;
+                                            alignment: center;
+                                            HorizontalLayout {
+                                                height: 32px;
+                                                spacing: 10px;
+                                                Btn {
+                                                    label: "立即备份";
+                                                    width: 88px;
+                                                    height: 32px;
+                                                    primary: true;
+                                                    clicked => { root.backup-save(); }
+                                                }
+                                                Btn {
+                                                    label: "恢复最近备份";
+                                                    width: 108px;
+                                                    height: 32px;
+                                                    enabled: root.backup-exists;
+                                                    clicked => { root.backup-restore(); }
+                                                }
+                                                Btn {
+                                                    label: "打开目录";
+                                                    width: 84px;
+                                                    height: 32px;
+                                                    clicked => { root.backup-open-dir(); }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // 开机启动
+                                Rectangle {
+                                    height: 56px;
+                                    border-radius: 10px;
+                                    background: #ffffff05;
+                                    border-width: 1px;
+                                    border-color: #ffffff0f;
+
+                                    HorizontalLayout {
+                                        padding-left: 14px;
+                                        padding-right: 14px;
+                                        spacing: 10px;
+
+                                        // 标题 / 副标题分两行，状态做成标题旁的小标签；
+                                        // 原来三截文字挤在同一行，读起来像一句话。
+                                        VerticalLayout {
+                                            alignment: center;
+                                            spacing: 3px;
+
+                                            HorizontalLayout {
+                                                spacing: 8px;
+                                                Text { text: "开机启动"; color: Theme.text; font-size: 12.5px; font-weight: 600; vertical-alignment: center; }
+                                                Text {
+                                                    text: root.autostart-on ? "已启用" : "未启用";
+                                                    color: root.autostart-on ? Theme.accent : Theme.faint;
+                                                    font-size: 10.5px;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                            Text { text: "登录 Windows 后自动挂上按键映射"; color: Theme.faint; font-size: 10.5px; }
+                                        }
+
+                                        Rectangle { horizontal-stretch: 1; background: transparent; }
+
+                                        // 开关同样是固定高度，套一层居中，别贴在上边框上。
+                                        VerticalLayout {
+                                            width: 42px;
+                                            alignment: center;
+                                            Rectangle {
+                                                width: 42px;
+                                                height: 24px;
+                                                border-radius: 12px;
+                                                background: root.autostart-on ? Theme.accent : #262d37;
+                                                border-width: 1px;
+                                                border-color: root.autostart-on ? #46d92d00 : #ffffff14;
+                                                at-ta := TouchArea {
+                                                    mouse-cursor: pointer;
+                                                    clicked => { root.toggle-autostart(); }
+                                                }
+                                                Rectangle {
+                                                    x: root.autostart-on ? parent.width - 22px : 2px;
+                                                    y: 2px;
+                                                    width: 20px;
+                                                    height: 20px;
+                                                    border-radius: 10px;
+                                                    background: root.autostart-on ? #06120a : #c3cad4;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ═══ 自动切换（在线模式专属） ═══
+                    if root.page == 3 : VerticalLayout {
+                        spacing: 12px;
+
+                        // ── 服务状态 ──
+                        Card {
+                            VerticalLayout {
+                                padding: 16px;
+                                spacing: 10px;
+
+                                HorizontalLayout {
+                                    spacing: 8px;
+                                    Text {
+                                        text: "后台服务";
+                                        color: Theme.text;
+                                        font-size: 14px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+                                    Badge {
+                                        label: root.agent-running ? (root.agent-paused ? "已暂停" : "运行中") : "未运行";
+                                        tone: root.agent-running ? (root.agent-paused ? Theme.warn : Theme.accent) : Theme.faint;
+                                    }
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                                    Btn {
+                                        label: "启动";
+                                        primary: !root.agent-running;
+                                        enabled: !root.agent-running;
+                                        clicked => { root.agent-start(); }
+                                    }
+                                    Btn {
+                                        label: root.agent-paused ? "恢复切换" : "暂停切换";
+                                        enabled: root.agent-running;
+                                        clicked => { root.agent-toggle-pause(); }
+                                    }
+                                    Btn {
+                                        label: "停止";
+                                        enabled: root.agent-running;
+                                        clicked => { root.agent-stop(); }
+                                    }
+                                }
+
+                                Text {
+                                    text: root.agent-detail;
+                                    color: Theme.dim;
+                                    font-size: 11.5px;
+                                    wrap: word-wrap;
+                                }
+                            }
+                        }
+
+                        // ── 添加规则 ──
+                        Card {
+                            VerticalLayout {
+                                padding-top: 14px;
+                                padding-bottom: 14px;
+                                SectionHeader { title: "新增映射"; }
+                                Rectangle { height: 8px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 14px;
+                                    spacing: 8px;
+
+                                    Field {
+                                        text: root.new-exe;
+                                        placeholder: "程序名，例如 chrome.exe";
+                                        edited(t) => { root.new-exe = t; }
+                                        accepted(t) => { root.new-exe = t; root.add-rule(root.new-exe, root.new-slot); }
+                                        horizontal-stretch: 1;
+                                    }
+                                    Btn {
+                                        label: "填入当前前台";
+                                        enabled: root.fg-exe != "—" && root.fg-exe != "";
+                                        clicked => { root.new-exe = root.fg-exe; }
+                                    }
+                                    Btn {
+                                        label: "添加 / 更新";
+                                        primary: true;
+                                        enabled: root.new-exe != "" && root.new-slot > 0;
+                                        clicked => { root.add-rule(root.new-exe, root.new-slot); }
+                                    }
+                                }
+
+                                Rectangle { height: 10px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 14px;
+                                    spacing: 6px;
+                                    Text {
+                                        text: "使用槽位";
+                                        color: Theme.dim;
+                                        font-size: 12px;
+                                        vertical-alignment: center;
+                                    }
+                                    Chip { label: "1"; selected: root.new-slot == 1; clicked => { root.new-slot = 1; } }
+                                    Chip { label: "2"; selected: root.new-slot == 2; clicked => { root.new-slot = 2; } }
+                                    Chip { label: "3"; selected: root.new-slot == 3; clicked => { root.new-slot = 3; } }
+                                    Chip { label: "4"; selected: root.new-slot == 4; clicked => { root.new-slot = 4; } }
+                                    Chip { label: "5"; selected: root.new-slot == 5; clicked => { root.new-slot = 5; } }
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                                    Text {
+                                        text: "当前前台：" + root.fg-exe;
+                                        color: Theme.faint;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── 规则列表 ──
+                        Card {
+                            VerticalLayout {
+                                padding-top: 14px;
+                                padding-bottom: 10px;
+                                SectionHeader { title: "程序 → 槽位"; }
+                                Rectangle { height: 6px; background: transparent; }
+
+                                if root.rules.length == 0 : Rectangle {
+                                    height: 62px;
+                                    background: transparent;
+                                    Text {
+                                        text: "还没有规则 · 在上面填程序名、选槽位后点「添加 / 更新」";
+                                        color: Theme.faint;
+                                        font-size: 11.5px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        width: parent.width;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                for r in root.rules : Rectangle {
+                                    height: 38px;
+                                    background: transparent;
+
+                                    Rectangle {
+                                        x: 8px;
+                                        width: parent.width - 16px;
+                                        border-radius: 8px;
+                                        background: rr.has-hover ? Theme.hover : transparent;
+                                    }
+
+                                    // 整行点击区必须放在内容之前：Slint 里后声明的元素盖在上面，
+                                    // 放在后面会把「删除」按钮的点击整个吞掉。
+                                    rr := TouchArea {
+                                        // 点行本身就把这条装进上面的编辑框，改完按「添加 / 更新」即覆盖。
+                                        mouse-cursor: pointer;
+                                        clicked => { root.new-exe = r.exe; root.new-slot = r.slot; }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 22px;
+                                        padding-right: 22px;
+                                        spacing: 10px;
+
+                                        Text {
+                                            text: r.exe;
+                                            color: Theme.text;
+                                            font-size: 12.5px;
+                                            vertical-alignment: center;
+                                            horizontal-stretch: 1;
+                                            overflow: elide;
+                                        }
+                                        Badge { label: r.slot-name; tone: Theme.accent; }
+                                        Btn {
+                                            label: "删除";
+                                            clicked => { root.remove-rule(r.exe); }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── 全局选项 ──
+                        Card {
+                            VerticalLayout {
+                                padding-top: 14px;
+                                padding-bottom: 14px;
+                                SectionHeader { title: "全局"; }
+                                Rectangle { height: 8px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 14px;
+                                    spacing: 6px;
+                                    Text { text: "自动切换"; color: Theme.dim; font-size: 12px; vertical-alignment: center; width: 70px; }
+                                    Chip { label: "开"; selected: root.auto-enabled; clicked => { root.apply-auto(true, root.auto-poll, root.auto-default); } }
+                                    Chip { label: "关"; selected: !root.auto-enabled; clicked => { root.apply-auto(false, root.auto-poll, root.auto-default); } }
+                                }
+
+                                Rectangle { height: 8px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 14px;
+                                    spacing: 6px;
+                                    Text { text: "检测间隔"; color: Theme.dim; font-size: 12px; vertical-alignment: center; width: 70px; }
+                                    Chip { label: "200ms";  selected: root.auto-poll == 200;  clicked => { root.apply-auto(root.auto-enabled, 200, root.auto-default); } }
+                                    Chip { label: "400ms";  selected: root.auto-poll == 400;  clicked => { root.apply-auto(root.auto-enabled, 400, root.auto-default); } }
+                                    Chip { label: "800ms";  selected: root.auto-poll == 800;  clicked => { root.apply-auto(root.auto-enabled, 800, root.auto-default); } }
+                                    Chip { label: "1500ms"; selected: root.auto-poll == 1500; clicked => { root.apply-auto(root.auto-enabled, 1500, root.auto-default); } }
+                                }
+
+                                Rectangle { height: 8px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 14px;
+                                    spacing: 6px;
+                                    Text { text: "无匹配时"; color: Theme.dim; font-size: 12px; vertical-alignment: center; width: 70px; }
+                                    Chip { label: "不切换"; selected: root.auto-default == 0; clicked => { root.apply-auto(root.auto-enabled, root.auto-poll, 0); } }
+                                    Chip { label: "槽 1"; selected: root.auto-default == 1; clicked => { root.apply-auto(root.auto-enabled, root.auto-poll, 1); } }
+                                    Chip { label: "槽 2"; selected: root.auto-default == 2; clicked => { root.apply-auto(root.auto-enabled, root.auto-poll, 2); } }
+                                    Chip { label: "槽 3"; selected: root.auto-default == 3; clicked => { root.apply-auto(root.auto-enabled, root.auto-poll, 3); } }
+                                    Chip { label: "槽 4"; selected: root.auto-default == 4; clicked => { root.apply-auto(root.auto-enabled, root.auto-poll, 4); } }
+                                    Chip { label: "槽 5"; selected: root.auto-default == 5; clicked => { root.apply-auto(root.auto-enabled, root.auto-poll, 5); } }
+                                }
+
+                                Rectangle { height: 10px; background: transparent; }
+                            }
+                        }
+
+                        // ── 在线模式：虚拟槽 ──
+                        Card {
+                            VerticalLayout {
+                                padding-top: 14px;
+                                padding-bottom: 14px;
+                                SectionHeader { title: "虚拟槽 · 在线模式"; }
+                                Rectangle { height: 6px; background: transparent; }
+
+                                if root.vs-slots.length == 0 : Rectangle {
+                                    height: 46px;
+                                    background: transparent;
+                                    Text {
+                                        text: "还没有虚拟槽 · 在下方填名称与程序名后点「新建」";
+                                        color: Theme.faint;
+                                        font-size: 11px;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                        width: parent.width;
+                                        wrap: word-wrap;
+                                    }
+                                }
+
+                                for v in root.vs-slots : Rectangle {
+                                    height: 36px;
+                                    border-radius: 8px;
+                                    background: v.id == root.vs-edit-id ? Theme.accent-soft : (vta.has-hover ? Theme.hover : transparent);
+                                    vta := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.vs-pick(v.id); }
+                                    }
+                                    HorizontalLayout {
+                                        padding-left: 12px; padding-right: 12px; spacing: 10px;
+                                        Text { text: v.name; color: v.current ? Theme.accent : Theme.text; font-size: 12.5px; vertical-alignment: center; width: 110px; overflow: elide; }
+                                        Text { text: v.id; color: Theme.faint; font-size: 11px; vertical-alignment: center; width: 60px; }
+                                        Text { text: v.exes; color: Theme.dim; font-size: 11.5px; vertical-alignment: center; horizontal-stretch: 1; overflow: elide; }
+                                        if v.current : Badge { label: "生效中"; tone: Theme.accent; }
+                                    }
+                                }
+
+                                Rectangle { height: 10px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 14px; padding-right: 14px; spacing: 8px;
+                                    Field {
+                                        text: root.vs-edit-name;
+                                        placeholder: "槽名称，如 办公";
+                                        edited(t) => { root.vs-edit-name = t; }
+                                        horizontal-stretch: 1;
+                                    }
+                                    Field {
+                                        text: root.vs-edit-exes;
+                                        placeholder: "程序名，逗号分隔，如 chrome.exe,code.exe";
+                                        edited(t) => { root.vs-edit-exes = t; }
+                                        horizontal-stretch: 2;
+                                    }
+                                    Btn { label: "新建"; clicked => { root.vs-new(); } }
+                                    Btn { label: "保存"; primary: true; enabled: root.vs-edit-id != ""; clicked => { root.vs-save(); } }
+                                    Btn { label: "删除"; enabled: root.vs-edit-id != ""; clicked => { root.vs-delete(); } }
+                                    Btn { label: "立即套用"; enabled: root.vs-edit-id != ""; clicked => { root.vs-apply(); } }
+                                }
+
+                                Rectangle { height: 10px; background: transparent; }
+
+                                HorizontalLayout {
+                                    padding-left: 14px; padding-right: 14px; spacing: 10px;
+                                    Text { text: "DPI"; color: Theme.dim; font-size: 12px; vertical-alignment: center; width: 52px; }
+                                    Field {
+                                        text: root.vs-edit-dpi;
+                                        placeholder: "如 2700";
+                                        edited(t) => { root.vs-edit-dpi = t; }
+                                        width: 100px;
+                                    }
+                                    // DPI 输入框与回报率之间留一段呼吸位，不然两组控件
+                                    // 挤成一条，读起来像同一个输入框的两半。
+                                    Rectangle { width: 14px; background: transparent; }
+                                    Text { text: "回报率"; color: Theme.dim; font-size: 12px; vertical-alignment: center; }
+                                    Chip { label: "125"; selected: root.vs-edit-polling == 125; clicked => { root.vs-edit-polling = 125; } }
+                                    Chip { label: "500"; selected: root.vs-edit-polling == 500; clicked => { root.vs-edit-polling = 500; } }
+                                    Chip { label: "1000"; selected: root.vs-edit-polling == 1000; clicked => { root.vs-edit-polling = 1000; } }
+                                    Rectangle { horizontal-stretch: 1; background: transparent; }
+                                }
+
+                                Rectangle { height: 10px; background: transparent; }
+                                HorizontalLayout {
+                                    padding-left: 14px;
+                                    padding-right: 14px;
+                                    Text {
+                                        text: "三区灯效 · 每区可独立设置效果、颜色与亮度";
+                                        color: Theme.faint;
+                                        font-size: 11px;
+                                    }
+                                }
+
+                                // 灯带
+                                Rectangle { height: 8px; background: transparent; }
+                                LedRow {
+                                    label: "灯带";
+                                    effect: root.vs-edit-strip-effect;
+                                    colour: root.vs-edit-strip-colour;
+                                    bright: root.vs-edit-strip-bright;
+                                    set-effect(v) => { root.vs-edit-strip-effect = v; }
+                                    set-bright(v) => { root.vs-edit-strip-bright = v; }
+                                }
+
+                                // Logo
+                                Rectangle { height: 8px; background: transparent; }
+                                LedRow {
+                                    label: "Logo";
+                                    effect: root.vs-edit-logo-effect;
+                                    colour: root.vs-edit-logo-colour;
+                                    bright: root.vs-edit-logo-bright;
+                                    set-effect(v) => { root.vs-edit-logo-effect = v; }
+                                    set-bright(v) => { root.vs-edit-logo-bright = v; }
+                                }
+
+                                // 滚轮
+                                Rectangle { height: 8px; background: transparent; }
+                                LedRow {
+                                    label: "滚轮";
+                                    effect: root.vs-edit-wheel-effect;
+                                    colour: root.vs-edit-wheel-colour;
+                                    bright: root.vs-edit-wheel-bright;
+                                    set-effect(v) => { root.vs-edit-wheel-effect = v; }
+                                    set-bright(v) => { root.vs-edit-wheel-bright = v; }
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle { height: 4px; background: transparent; }
+                }
+            }
+
+            // ── 状态栏 ──
+            Rectangle { height: 1px; background: #ffffff0a; }
+            Rectangle {
+                height: 30px;
+                background: transparent;
+                HorizontalLayout {
+                    padding-left: 20px;
+                    padding-right: 14px;
+                    spacing: 8px;
+                    VerticalLayout {
+                        alignment: center;
+                        Rectangle {
+                            width: 7px;
+                            height: 7px;
+                            border-radius: 4px;
+                            background: root.connected ? Theme.accent : Theme.danger;
+                        }
+                    }
+                    Text { text: root.status-text; color: Theme.faint; font-size: 11px; vertical-alignment: center; overflow: elide; }
+                }
+            }
+        }
+    }
+
+    // 操作结果提示：绝对定位浮在内容上方，不参与布局。
+    // 之前把它放在竖直布局里，出现/消失时整页会跳一下，点按钮时手感很差。
+    if root.toast != "" : Rectangle {
+        x: 218px;
+        y: 78px;
+        width: parent.width - 240px;
+        height: 38px;
+        border-radius: 10px;
+        background: #1d3a19;
+        border-width: 1px;
+        border-color: Theme.accent-dim;
+
+        Rectangle {
+            x: 0; y: 8px; width: 3px; height: 22px;
+            border-radius: 2px;
+            background: Theme.accent;
+        }
+        HorizontalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            Text {
+                text: root.toast;
+                color: Theme.accent;
+                font-size: 12.5px;
+                vertical-alignment: center;
+                horizontal-stretch: 1;
+                overflow: elide;
+            }
+        }
+    }
+}

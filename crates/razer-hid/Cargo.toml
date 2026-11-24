@@ -1,0 +1,19 @@
+[package]
+name = "razer-hid"
+version.workspace = true
+edition.workspace = true
+description = "Win32 HID transport for the Basilisk V3 vendor interface"
+
+[dependencies]
+razer-protocol.workspace = true
+
+[dependencies.windows-sys]
+version = "0.59"
+features = [
+    "Win32_Foundation",
+    "Win32_Devices_HumanInterfaceDevice",
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Storage_FileSystem",
+    "Win32_Security",
+    "Win32_System_IO",
+]

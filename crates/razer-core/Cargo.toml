@@ -1,0 +1,9 @@
+[package]
+name = "razer-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+razer-protocol.workspace = true
+razer-hid.workspace = true
+razer-ipc.workspace = true

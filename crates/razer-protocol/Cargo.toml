@@ -1,0 +1,7 @@
+[package]
+name = "razer-protocol"
+version.workspace = true
+edition.workspace = true
+description = "Basilisk V3 control protocol: report layout, CRC, command builders, macro codec"
+
+[dependencies]

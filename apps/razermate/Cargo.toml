@@ -1,0 +1,27 @@
+[package]
+name = "razermate"
+version.workspace = true
+edition.workspace = true
+description = "Basilisk V3 control panel"
+
+[[bin]]
+name = "razermate"
+path = "src/main.rs"
+
+[dependencies]
+razer-protocol.workspace = true
+razer-hid.workspace = true
+razer-core.workspace = true
+razer-ipc.workspace = true
+
+[dependencies.windows-sys]
+version = "0.59"
+features = ["Win32_Foundation", "Win32_System_Registry", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"]
+
+[dependencies.slint]
+version = "1.9"
+default-features = false
+features = ["compat-1-2", "backend-winit", "renderer-software", "std"]
+
+[build-dependencies]
+slint-build = "1.9"
