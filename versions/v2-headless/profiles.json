@@ -1,7 +1,7 @@
 {
   "$schema": "profiles.schema.json",
   "schema": 3,
-  "updated_at": "2026-11-24T23:30:00+08:00",
+  "updated_at": "2026-11-24T23:58:28+08:00",
 
   "_readme": [
     "RazerMate v2 唯一事实源。后台程序是通用解释器：它不认识任何按键，也不内置『哪些键固定』的规则。",
@@ -12,7 +12,7 @@
     "action='native' 表示该键保持原生功能，程序会去 device.buttons[name].native 查具体动作串。",
     "locked / equivalent / aliases / note 只是给人和 AI 看的说明字段，程序只读 action，不因 locked 拒绝任何配置。",
     "程序忽略所有 _ 开头字段和不认识的字段，因此可以安全地增加新配置选项而不必重编译。",
-    "运行时位置：%LOCALAPPDATA%\\RazerMate\\profiles.json；本文件是仓库内的契约与默认模板。",
+    "当前自启实例直接读取本文件（--config 指向它），改这里约 1 秒生效；未指定 --config 时才会去读 %LOCALAPPDATA%\\RazerMate\\profiles.json，且不存在会自动生成默认模板。",
     "只往 p0（direct profile / RAM 工作层）差量写，绝不读写、切换或擦除 5 个板载配置槽。"
   ],
 
@@ -67,7 +67,7 @@
     "config_debounce_ms": 250,
     "reapply_on_device_arrival": true,
     "reapply_on_wake": true,
-    "reapply_interval_ms": 0,
+    "reapply_interval_ms": 5000,
     "restore_on_exit": false,
     "log": { "enabled": true, "path": "", "level": "info", "max_kb": 512 },
     "p0": {

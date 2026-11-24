@@ -9,9 +9,19 @@
 | v1 · 上位机 GUI | `v1-gui/` | `razermate.exe` 图形控制面板 + 后台服务 + CLI | 已冻结，不再投入界面 |
 | v2 · 配置驱动 | `v2-headless/` | `profiles.json` + 无 GUI 后台小程序（开机自启 / 纯在线模式 / 不碰板载配置） | 已实现并真机验证 |
 
-v2 的 `profiles.json` 是唯一事实源，配套 `PROFILES_GUIDE.md` 给 AI / Agent 读：
-用户快捷键偏好、13 个按键的当前映射、每组配置与灯光明细。
+v2 的 `profiles.json` 是唯一事实源，`v2-headless/` 内的交付物：
+
+| 文件 | 用途 |
+| --- | --- |
+| `profiles.json` / `profiles.schema.json` | 唯一事实源 / draft-07 校验契约 |
+| `README.md` | 完整手册：当前状态、命令、边界、排障、验收基线 |
+| `使用说明.txt` | 一页速查（发行包内也放了一份） |
+| `PROFILES_GUIDE.md` | 给 AI / Agent 读：用户偏好、动作语法、四组配置明细 |
+| `dist/RazerMate/` | release 交付：`razermate-headless.exe` + `razerctl.exe` + 使用说明 |
+
 后台程序零硬编码 —— 按钮 ID 表、动作串、匹配规则全在 JSON，改配置不用重新编译。
+开机自启命令带 `--config` 指向 `v2-headless/profiles.json`，改这一份约 1 秒生效；
+实测常驻私有内存 2.13 MB / 工作集 10.13 MB / 单线程。
 
 ## 留在仓库根（两版共用）
 
