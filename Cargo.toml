@@ -7,8 +7,6 @@ members = [
     "crates/razer-ipc",
     "crates/razer-config",
     "apps/razerctl-rs",
-    "apps/razermate",
-    "apps/razermate-agent",
     "apps/razermate-headless",
 ]
 

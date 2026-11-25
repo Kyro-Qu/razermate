@@ -1,7 +1,7 @@
 # RazerMate 版本划分
 
-本仓库当前只交付 **v2 · 配置驱动**（`v2-headless/`）。v1 的 GUI 交付物已移出仓库，
-需要查阅时走 git 历史，例如 `git show <删除提交>:versions/v1-gui/README.md`。
+本仓库当前只交付 **v2 · 配置驱动**（`v2-headless/`）。v1 的交付物与源码都已移出仓库，
+需要查阅时走 git 历史，例如 `git show 784cb5b:versions/v1-gui/README.md`。
 
 | 版本 | 目录 | 交付形态 | 状态 |
 | --- | --- | --- | --- |
@@ -30,6 +30,7 @@ v2 的 `profiles.json` 是唯一事实源，配套 `PROFILES_GUIDE.md` 给 AI / 
 
 ## 源码现状
 
-v1 的界面与托盘源码仍在 `apps/razermate/`（Slint + `ui/app.slint`）和 `apps/razermate-agent/`，
-`Cargo.toml` 仍把它们列为 workspace 成员，所以 `cargo build --workspace` 还会编译它们。
-v2 本身不依赖这两个 app，只用 `crates/`；确认不再需要回退到界面版时，可从 workspace 移除。
+仓库只保留 v2 的源码：`crates/`（协议 / 设备层 / 配置层）+ `apps/razerctl-rs`、`apps/razermate-headless`。
+v1 的 Slint 界面（`apps/razermate/`）与托盘后台（`apps/razermate-agent/`）源码已移出仓库，
+需要时走 git 历史，例如 `git show 784cb5b:apps/razermate/ui/app.slint`；
+v1 的可执行文件在 `DeviceManagement/archive/razermate-v1-gui-2026-11-25.zip`。
