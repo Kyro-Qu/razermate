@@ -12,6 +12,10 @@ registry = "sparse+https://mirrors.ustc.edu.cn/crates.io-index/"
 # 16C/32T; parallel link jobs stay bounded so we don't thrash RAM.
 jobs = 32
 
+# 构建产物统一落到 dev/target，仓库顶层只留 RazerMate/（用户）与 dev/（开发）。
+# 相对路径按「.cargo 的父目录」= 仓库根解析。
+target-dir = "dev/target"
+
 [target.x86_64-pc-windows-gnu]
 # Link with the lld that ships with rustc, against rustup's own MinGW libraries.
 #

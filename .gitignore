@@ -1,5 +1,10 @@
+# 构建产物（统一落到 dev/target，见 .cargo/config.toml）
+/dev/target/
+# 旧的根级 target，迁移期保留忽略，避免误入版本控制
 /target/
-**/dist/
+
+# 用户目录里的可执行文件不入库；脚本、配置、文档要入库
+/RazerMate/*.exe
 
 *.log
 *.pdb

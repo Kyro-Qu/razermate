@@ -15,10 +15,10 @@ use serde::Deserialize;
 pub use razer_ipc::vslots::SlotConfig;
 use razer_ipc::vslots::LedSetting;
 
-/// 编译进二进制的默认配置，唯一事实源就是仓库里的 v2 样例。
+/// 编译进二进制的默认配置，唯一事实源就是用户目录里的那份 `profiles.json`。
 /// 首次运行会把它写到 `%LOCALAPPDATA%\RazerMate\profiles.json`。
 pub const DEFAULT_PROFILES_JSON: &str =
-    include_str!("../../../versions/v2-headless/profiles.json");
+    include_str!("../../../../RazerMate/profiles.json");
 
 pub const SCHEMA_VERSION: u32 = 3;
 

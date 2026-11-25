@@ -29,7 +29,7 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CTL = ROOT / "versions" / "v1-gui" / "dist" / "RazerMate" / "razerctl.exe"
+CTL = ROOT.parent / "RazerMate" / "razerctl.exe"
 CREATE_NO_WINDOW = 0x08000000
 TIMEOUT_S = 180
 IDLE_FINISH_S = 15
@@ -390,7 +390,7 @@ def watch() -> None:
 def main() -> int:
     arg = sys.argv[1] if len(sys.argv) > 1 else "--watch"
     if arg != "--selftest" and not CTL.exists():
-        print(f"找不到 {CTL}，请先跑 versions/v1-gui/scripts/package.ps1 生成 release 交付目录")
+        print(f"找不到 {CTL}，请先在仓库根跑 cargo build --release，再把 dev/target/release/razerctl.exe 复制到 RazerMate/")
         return 2
     if arg == "--prepare":
         baseline()

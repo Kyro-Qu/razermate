@@ -1,13 +1,13 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/razer-protocol",
-    "crates/razer-hid",
-    "crates/razer-core",
-    "crates/razer-ipc",
-    "crates/razer-config",
-    "apps/razerctl-rs",
-    "apps/razermate-headless",
+    "dev/crates/razer-protocol",
+    "dev/crates/razer-hid",
+    "dev/crates/razer-core",
+    "dev/crates/razer-ipc",
+    "dev/crates/razer-config",
+    "dev/apps/razerctl-rs",
+    "dev/apps/razermate-headless",
 ]
 
 [workspace.package]
@@ -15,11 +15,11 @@ version = "0.1.0"
 edition = "2021"
 
 [workspace.dependencies]
-razer-protocol = { path = "crates/razer-protocol" }
-razer-hid = { path = "crates/razer-hid" }
-razer-core = { path = "crates/razer-core" }
-razer-ipc = { path = "crates/razer-ipc" }
-razer-config = { path = "crates/razer-config" }
+razer-protocol = { path = "dev/crates/razer-protocol" }
+razer-hid = { path = "dev/crates/razer-hid" }
+razer-core = { path = "dev/crates/razer-core" }
+razer-ipc = { path = "dev/crates/razer-ipc" }
+razer-config = { path = "dev/crates/razer-config" }
 
 [profile.release]
 opt-level = "s"
