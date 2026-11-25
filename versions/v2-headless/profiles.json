@@ -1,7 +1,7 @@
 {
   "$schema": "profiles.schema.json",
   "schema": 3,
-  "updated_at": "2026-11-24T23:58:28+08:00",
+  "updated_at": "2026-11-25T00:04:34+08:00",
 
   "_readme": [
     "RazerMate v2 唯一事实源。后台程序是通用解释器：它不认识任何按键，也不内置『哪些键固定』的规则。",
@@ -13,6 +13,7 @@
     "locked / equivalent / aliases / note 只是给人和 AI 看的说明字段，程序只读 action，不因 locked 拒绝任何配置。",
     "程序忽略所有 _ 开头字段和不认识的字段，因此可以安全地增加新配置选项而不必重编译。",
     "当前自启实例直接读取本文件（--config 指向它），改这里约 1 秒生效；未指定 --config 时才会去读 %LOCALAPPDATA%\\RazerMate\\profiles.json，且不存在会自动生成默认模板。",
+    "sensor 的 dpi/polling 已收进 _preference：软件不下发 DPI/回报率 —— 写它们必须切 driver mode，会还原板载槽并覆盖整个 p0，造成设备反复重置、滚轮阻尼与灯效持续抖动。请用鼠标 DPI 键或板载配置设置。",
     "只往 p0（direct profile / RAM 工作层）差量写，绝不读写、切换或擦除 5 个板载配置槽。"
   ],
 
@@ -67,7 +68,7 @@
     "config_debounce_ms": 250,
     "reapply_on_device_arrival": true,
     "reapply_on_wake": true,
-    "reapply_interval_ms": 5000,
+    "reapply_interval_ms": 0,
     "restore_on_exit": false,
     "log": { "enabled": true, "path": "", "level": "info", "max_kb": 512 },
     "p0": {
@@ -161,7 +162,11 @@
       "dpi":        { "action": "dpi:cycle",    "equivalent": "循环切换 DPI 档位" },
       "wheelmode":  { "action": "wheelmode",    "equivalent": "切换滚轮阻尼模式" }
     },
-    "sensor": { "dpi": 1600, "polling": 500 },
+    "sensor": {
+      "_preference": { "dpi": 1600, "polling": 500 },
+      "_disabled_because": "v2 只写 p0：写 DPI/回报率必须切 driver mode 再切回，每次都还原板载槽并覆盖整个 p0，造成设备反复重置、滚轮阻尼与灯效持续抖动，且 DPI 实际也留不住。故软件不下发这两项。",
+      "_how_to_set": "用鼠标 DPI 键或板载配置自行设置；各组偏好见 profiles[].overrides.sensor._preference。将来若允许驻留 driver mode，把 _preference 改回 dpi/polling 字段即可恢复下发。"
+    },
     "lighting": {
       "wheel": { "effect": "static", "rgb": "46d92d", "brightness": 180 },
       "logo":  { "effect": "static", "rgb": "46d92d", "brightness": 180 },
@@ -188,7 +193,7 @@
           "dpi":       { "action": "dpi:cycle", "equivalent": "循环切换 DPI 档位" },
           "wheelmode": { "action": "wheelmode", "equivalent": "切换滚轮阻尼模式" }
         },
-        "sensor": { "dpi": 1600, "polling": 500 },
+        "sensor": { "_preference": { "dpi": 1600, "polling": 500 } },
         "lighting": {
           "wheel": { "effect": "static", "rgb": "46d92d", "brightness": 180 },
           "logo":  { "effect": "static", "rgb": "46d92d", "brightness": 180 },
@@ -216,7 +221,7 @@
           "clutch":    { "action": "media:volup",     "equivalent": "音量 +" },
           "wheelmode": { "action": "wheelmode",       "equivalent": "切换滚轮阻尼模式" }
         },
-        "sensor": { "dpi": 2000, "polling": 1000 },
+        "sensor": { "_preference": { "dpi": 2000, "polling": 1000 } },
         "lighting": {
           "wheel": { "effect": "static", "rgb": "4c9dff", "brightness": 160 },
           "logo":  { "effect": "static", "rgb": "4c9dff", "brightness": 160 },
@@ -244,7 +249,7 @@
           "dpi":       { "action": "dpi:down",      "equivalent": "降一档 DPI，画板时更稳" },
           "wheelmode": { "action": "off",           "equivalent": "禁用，画板时避免误切滚轮模式" }
         },
-        "sensor": { "dpi": 1200, "polling": 500 },
+        "sensor": { "_preference": { "dpi": 1200, "polling": 500 } },
         "lighting": {
           "wheel": { "effect": "static", "rgb": "ffab4a", "brightness": 150 },
           "logo":  { "effect": "static", "rgb": "ffab4a", "brightness": 150 },
@@ -269,7 +274,7 @@
           "clutch":    { "action": "dpi:down", "equivalent": "降一档 DPI（狙击时更稳）" },
           "wheelmode": { "action": "off",      "equivalent": "禁用，游戏中避免误切滚轮模式" }
         },
-        "sensor": { "dpi": 800, "polling": 1000 },
+        "sensor": { "_preference": { "dpi": 800, "polling": 1000 } },
         "lighting": {
           "wheel": { "effect": "wave", "mode": 1, "speed": 5, "brightness": 200 },
           "logo":  { "effect": "wave", "mode": 1, "speed": 5, "brightness": 200 },

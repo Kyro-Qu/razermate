@@ -1,37 +1,35 @@
 # RazerMate 版本划分
 
-同一套 Cargo workspace（`apps/` + `crates/`）支撑两个版本：**源码共用，按版本归档的是交付物、文档与配置**。
-
-不整体复制源码树：`target/` 约 9.8 GB，且 git 仓库根在上一级 `DeviceManagement/`，物理分叉会破坏构建路径与版本追踪。
+本仓库当前只交付 **v2 · 配置驱动**（`v2-headless/`）。v1 的 GUI 交付物已移出仓库，
+需要查阅时走 git 历史，例如 `git show <删除提交>:versions/v1-gui/README.md`。
 
 | 版本 | 目录 | 交付形态 | 状态 |
 | --- | --- | --- | --- |
-| v1 · 上位机 GUI | `v1-gui/` | `razermate.exe` 图形控制面板 + 后台服务 + CLI | 已冻结，不再投入界面 |
-| v2 · 配置驱动 | `v2-headless/` | `profiles.json` + 无 GUI 后台小程序（开机自启 / 纯在线模式 / 不碰板载配置） | 已实现并真机验证 |
+| v2 · 配置驱动 | `v2-headless/` | `profiles.json` + 无 GUI 后台小程序（开机自启 / 纯在线模式 / 不碰板载配置） | 当前唯一版本 |
+| v1 · 上位机 GUI | 已移出仓库 | 曾为 Slint 控制面板 + 托盘后台 + CLI | 已冻结归档，仅存于 git 历史 |
 
-v2 的 `profiles.json` 是唯一事实源，`v2-headless/` 内的交付物：
-
-| 文件 | 用途 |
-| --- | --- |
-| `profiles.json` / `profiles.schema.json` | 唯一事实源 / draft-07 校验契约 |
-| `README.md` | 完整手册：当前状态、命令、边界、排障、验收基线 |
-| `使用说明.txt` | 一页速查（发行包内也放了一份） |
-| `PROFILES_GUIDE.md` | 给 AI / Agent 读：用户偏好、动作语法、四组配置明细 |
-| `dist/RazerMate/` | release 交付：`razermate-headless.exe` + `razerctl.exe` + 使用说明 |
-
+v2 的 `profiles.json` 是唯一事实源，配套 `PROFILES_GUIDE.md` 给 AI / Agent 读：
+用户快捷键偏好、13 个按键的当前映射、每组配置与灯光明细。
 后台程序零硬编码 —— 按钮 ID 表、动作串、匹配规则全在 JSON，改配置不用重新编译。
-开机自启命令带 `--config` 指向 `v2-headless/profiles.json`，改这一份约 1 秒生效；
-实测常驻私有内存 2.13 MB / 工作集 10.13 MB / 单线程。
 
-## 留在仓库根（两版共用）
+## 设备与协议资料（长期保留）
+
+移除 v1 时**没有**删除任何设备知识。这些才是后续继续控制这只鼠标的依据：
+
+| 文件 | 内容 |
+| --- | --- |
+| `docs/DEVICE_REFERENCE.md` | 设备知识档案：USB 接口结构、模式、槽位与 p0、按键 ID、宏、灯效、Flash 模型、已知坑清单 |
+| `docs/PROTOCOL.md` | 报文规格：90 字节结构、CRC、六个命令族、宏编码、p0 语义、实现检查清单 |
+| `docs/PLAN.md` | 实施计划与实机实验记录：p0 六组验证、Flash 空间语义、宏触发方式、时序约束 |
+
+## 留在仓库根（源码与验证）
 
 - `apps/`、`crates/`、`Cargo.toml` —— 全部 Rust 源码与构建配置
-  （v2 新增 `crates/razer-config/` 与 `apps/razermate-headless/`，与 v1 共用设备层）
-- `docs/DEVICE_REFERENCE.md`、`docs/PROTOCOL.md`、`docs/PLAN.md` —— 设备事实与协议规格
+  （v2 新增 `crates/razer-config/` 与 `apps/razermate-headless/`，与旧版共用设备层）
 - `tests/golden_compare.py`、`tests/holdtest.py` —— 协议 / 设备级验证
 
-## 为何不把 GUI 源码搬进 v1
+## 源码现状
 
-`apps/razermate-agent`、`crates/razer-core` 等是 v2 的直接依赖，切开会造成大量路径改动而收益为零。
-v1 只归档「这一版独有的东西」：发行包、UI 设计文档与截图、使用说明、UI 自动化脚本、打包脚本。
-源码归属在每个版本的 README 里写明。
+v1 的界面与托盘源码仍在 `apps/razermate/`（Slint + `ui/app.slint`）和 `apps/razermate-agent/`，
+`Cargo.toml` 仍把它们列为 workspace 成员，所以 `cargo build --workspace` 还会编译它们。
+v2 本身不依赖这两个 app，只用 `crates/`；确认不再需要回退到界面版时，可从 workspace 移除。

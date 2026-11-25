@@ -603,7 +603,8 @@ mod tests {
         assert_eq!(get(53), "key:ctrl+c");
         assert_eq!(s.leds.len(), 3);
         assert_eq!(s.brightness.len(), 3);
-        assert_eq!(s.dpi, Some((1600, 1600)));
+        // sensor 已收进 _preference：软件不下发 DPI（写它会切 driver mode 并覆盖 p0）。
+        assert_eq!(s.dpi, None, "默认配置不应编译出 DPI 下发项");
     }
 
     #[test]
@@ -637,7 +638,8 @@ mod tests {
         assert_eq!(s.bindings.len(), 13);
         assert_eq!(s.bindings.iter().find(|(i, _)| *i == 52).unwrap().1, "key:ctrl+v");
         assert_eq!(s.bindings.iter().find(|(i, _)| *i == 15).unwrap().1, "dpi:down");
-        assert_eq!(s.dpi, Some((800, 800)));
+        // game 组的 sensor 同样只有 _preference，不产生 DPI 下发项。
+        assert_eq!(s.dpi, None);
     }
 
     #[test]
