@@ -16,11 +16,14 @@ RazerMate/
 ├── stop.cmd                  双击关闭（会问你是否确认）
 ├── razermate-headless.exe    后台程序本体
 ├── razerctl.exe              命令行调试工具
-├── profiles.json             配置：改它就能改行为，改完 1 秒生效
+├── 配置指南.md               配置清单：每个键的宏、绑定哪个应用、灯光、DPI
+├── 配置参考.md               改配置用的动作语法与命令
+├── profiles.json             程序读的配置数据，由配置指南同步而来
 ├── profiles.schema.json      配置的格式定义（编辑器补全用）
-├── 配置指南.md               怎么改配置
 └── 使用说明.md               先看这个
 ```
+
+改配置看 `配置指南.md`——它才是给人看的权威版本；`profiles.json` 是程序读的数据，改完指南要同步过去。
 
 第一次用，读 [`RazerMate/使用说明.md`](RazerMate/使用说明.md)，然后双击 `start.cmd`。
 
