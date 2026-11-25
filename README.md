@@ -36,7 +36,7 @@ dev/
 ├── apps/         razermate-headless（v2 后台）· razerctl-rs（CLI）
 ├── docs/         设备知识档案、报文规格、实机实验记录
 ├── tests/        协议与设备级验证脚本
-└── target/       构建产物（12 GB 级，已忽略入库）
+└── target/       构建产物（不入库）
 ```
 
 ```bash
