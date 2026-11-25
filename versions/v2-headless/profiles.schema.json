@@ -126,15 +126,31 @@
     },
     "sensor": {
       "type": "object",
+      "description": "v2 只写 p0，不下发 DPI/回报率：写这两项必须切 driver mode 再切回，会还原板载槽并覆盖整个 p0，导致设备反复重置。因此偏好记在 _preference，不下发；若要恢复下发，把 _preference 改回 dpi/polling 字段（见 _how_to_set）。",
       "properties": {
         "dpi": {
-          "description": "单值同时设 X/Y，或 [x, y] 分开设",
+          "description": "单值同时设 X/Y，或 [x, y] 分开设。注意：v2 会忽略此项，仅作记录；实际下发请确认已改回直接字段写法。",
           "oneOf": [
             { "type": "integer", "minimum": 100, "maximum": 26000 },
             { "type": "array", "items": { "type": "integer", "minimum": 100, "maximum": 26000 }, "minItems": 2, "maxItems": 2 }
           ]
         },
-        "polling": { "type": "integer", "enum": [125, 500, 1000] }
+        "polling": { "type": "integer", "enum": [125, 500, 1000], "description": "回报率。同 dpi，v2 不下发。" },
+        "_preference": {
+          "type": "object",
+          "description": "仅记录该组的 DPI/回报率偏好，不下发给设备。改鼠标 DPI 请用 DPI 键或板载配置。",
+          "properties": {
+            "dpi": {
+              "oneOf": [
+                { "type": "integer", "minimum": 100, "maximum": 26000 },
+                { "type": "array", "items": { "type": "integer", "minimum": 100, "maximum": 26000 }, "minItems": 2, "maxItems": 2 }
+              ]
+            },
+            "polling": { "type": "integer", "enum": [125, 500, 1000] }
+          }
+        },
+        "_disabled_because": { "type": "string", "description": "注释字段：说明为何不下发。程序忽略。" },
+        "_how_to_set": { "type": "string", "description": "注释字段：说明如何恢复下发。程序忽略。" }
       }
     },
     "match": {
